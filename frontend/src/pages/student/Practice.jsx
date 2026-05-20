@@ -1,365 +1,199 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import api from '../../services/api';
-import toast from 'react-hot-toast';
-import {
-  CheckCircle, XCircle, Clock, ChevronRight, ChevronLeft,
-  Flag, BookOpen, Target, Zap, ListChecks, RotateCcw,
-  TrendingUp, AlertCircle
-} from 'lucide-react';
+﻿import { useEffect, useState, useRef } from "react";
+import api from "../../services/api";
+import { Zap, ChevronDown, CheckCircle2, XCircle, RotateCcw, Play } from "lucide-react";
 
-// ─── helpers ────────────────────────────────────────────────────────────────
-const fmtTime = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+const C = "bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800";
+const SEL = "w-full border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 appearance-none";
 
-const DIFF_LABELS = { '': 'Any Difficulty', easy: 'Easy', medium: 'Medium', hard: 'Hard' };
-const DIFF_COLORS = { easy: 'text-green-600 bg-green-50 border-green-200', medium: 'text-yellow-600 bg-yellow-50 border-yellow-200', hard: 'text-red-600 bg-red-50 border-red-200', '': 'text-gray-600 bg-gray-50 border-gray-200' };
+const AI_STEPS = ["Analyzing your performance...", "Selecting optimal questions...", "Generating personalized quiz..."];
 
-// ─── Setup View ──────────────────────────────────────────────────────────────
 function SetupView({ onStart }) {
   const [subjects, setSubjects] = useState([]);
-  const [config, setConfig] = useState({ subject_id: '', topic_id: '', count: 10, difficulty: '', mode: 'instant' });
+  const [cfg, setCfg] = useState({ subject_id: "", topic_id: "", difficulty: "mixed", num_questions: 10 });
+  const [topics, setTopics] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [aiStep, setAiStep] = useState(-1);
 
   useEffect(() => {
-    api.get('/student/subjects').then(r => setSubjects(r.data.subjects || [])).catch(() => {});
+    api.get("/student/subjects").then(r => setSubjects(r.data.subjects || [])).catch(() => {});
   }, []);
 
-  const selectedSubject = subjects.find(s => s.subject_id === config.subject_id);
-  const topics = selectedSubject?.topics || [];
-
-  const set = (k, v) => setConfig(c => ({ ...c, [k]: v, ...(k === 'subject_id' ? { topic_id: '' } : {}) }));
-
-  const [loadingStep, setLoadingStep] = useState(0);
-
-  const handleStart = async () => {
-    setLoading(true);
-    setLoadingStep(0);
-    const steps = [
-      { delay: 800,  msg: 1 },
-      { delay: 3000, msg: 2 },
-      { delay: 6000, msg: 3 },
-    ];
-    const timers = steps.map(({ delay, msg }) => setTimeout(() => setLoadingStep(msg), delay));
-    try {
-      const res = await api.post('/student/practice/start', {
-        topic_id: config.topic_id || undefined,
-        count: Number(config.count),
-        difficulty: config.difficulty || undefined,
-      }, { timeout: 60000 });
-      onStart({ ...res.data, mode: config.mode });
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'AI generation timed out. Please try again.');
-    } finally {
-      timers.forEach(clearTimeout);
-      setLoading(false);
-      setLoadingStep(0);
+  useEffect(() => {
+    if (cfg.subject_id) {
+      const sub = subjects.find(s => s.subject_id == cfg.subject_id);
+      setTopics(sub?.topics || []);
+      setCfg(c => ({ ...c, topic_id: "" }));
     }
+  }, [cfg.subject_id, subjects]);
+
+  const start = async () => {
+    if (!cfg.subject_id) return;
+    setLoading(true); setAiStep(0);
+    const t1 = setTimeout(() => setAiStep(1), 700);
+    const t2 = setTimeout(() => setAiStep(2), 1400);
+    try {
+      const r = await api.post("/student/practice/start", { ...cfg, subject_id: Number(cfg.subject_id), topic_id: cfg.topic_id ? Number(cfg.topic_id) : null });
+      clearTimeout(t1); clearTimeout(t2);
+      onStart(r.data);
+    } catch { clearTimeout(t1); clearTimeout(t2); }
+    setLoading(false); setAiStep(-1);
   };
 
-  const modes = [
-    { id: 'instant', icon: Zap, label: 'Instant Feedback', desc: 'See answer after each question' },
-    { id: 'test', icon: ListChecks, label: 'Test Mode', desc: 'Review all answers at the end' },
-  ];
+  if (loading) return (
+    <div className="flex flex-col items-center justify-center py-24 gap-6">
+      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-xl">
+        <Zap size={28} className="text-white animate-pulse" />
+      </div>
+      <div className="space-y-2 text-center">
+        {AI_STEPS.map((step, i) => (
+          <p key={i} className={"text-sm transition-all duration-500 " + (i <= aiStep ? "text-indigo-600 dark:text-indigo-400 font-semibold" : "text-gray-300 dark:text-gray-600")}>{step}</p>
+        ))}
+      </div>
+    </div>
+  );
 
   return (
-    <div className="p-6 max-w-lg mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Practice Questions</h1>
-        <p className="text-gray-500 text-sm mt-1">Configure your session and start practicing</p>
-      </div>
-
-      <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 space-y-5">
-
-        {/* Mode selector */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Session Mode</label>
-          <div className="grid grid-cols-2 gap-3">
-            {modes.map(({ id, icon: Icon, label, desc }) => (
-              <button
-                key={id}
-                onClick={() => set('mode', id)}
-                className={`p-3 rounded-lg border-2 text-left transition-colors ${config.mode === id ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <Icon size={15} className={config.mode === id ? 'text-blue-600' : 'text-gray-400'} />
-                  <span className={`text-sm font-medium ${config.mode === id ? 'text-blue-700' : 'text-gray-700'}`}>{label}</span>
-                </div>
-                <p className="text-xs text-gray-400">{desc}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Subject */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
-          <select value={config.subject_id} onChange={e => set('subject_id', e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option value="">All Subjects</option>
-            {subjects.map(s => <option key={s.subject_id} value={s.subject_id}>{s.name}</option>)}
-          </select>
-        </div>
-
-        {/* Topic — only shown when subject selected */}
-        {config.subject_id && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Topic</label>
-            <select value={config.topic_id} onChange={e => set('topic_id', e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="">All Topics in {selectedSubject?.name}</option>
-              {topics.map(t => <option key={t.topic_id} value={t.topic_id}>{t.name}</option>)}
+    <div className="max-w-md mx-auto">
+      <div className={"rounded-2xl border p-6 " + C}>
+        <h2 className="text-base font-bold text-gray-800 dark:text-gray-100 mb-5">Configure Practice Session</h2>
+        <div className="space-y-4">
+          <div className="relative">
+            <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Subject *</label>
+            <select value={cfg.subject_id} onChange={e => setCfg(c => ({ ...c, subject_id: e.target.value }))} className={SEL}>
+              <option value="">Select subject...</option>
+              {subjects.map(s => <option key={s.subject_id} value={s.subject_id}>{s.subject_name}</option>)}
             </select>
+            <ChevronDown size={14} className="absolute right-3 top-[2.35rem] text-gray-400 pointer-events-none" />
           </div>
-        )}
-
-        {/* Count */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Number of Questions</label>
-          <div className="flex gap-2">
-            {[5, 10, 15, 20, 25].map(n => (
-              <button key={n} onClick={() => set('count', n)}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${config.count === n ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 text-gray-600 hover:border-blue-300'}`}>
-                {n}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Difficulty */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Difficulty</label>
-          <div className="grid grid-cols-4 gap-2">
-            {Object.entries(DIFF_LABELS).map(([val, lbl]) => (
-              <button key={val} onClick={() => set('difficulty', val)}
-                className={`py-2 rounded-lg text-xs font-medium border transition-colors ${config.difficulty === val ? DIFF_COLORS[val] + ' border-2' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}>
-                {lbl}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <button onClick={handleStart} disabled={loading}
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-lg transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
-          {loading ? (
-            <span className="flex flex-col items-center gap-1 w-full">
-              <span className="flex items-center gap-2">
-                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                {loadingStep === 0 && 'Connecting to AI...'}
-                {loadingStep === 1 && 'Generating your questions...'}
-                {loadingStep === 2 && 'Almost ready, crafting explanations...'}
-                {loadingStep === 3 && 'Saving session, just a moment...'}
-              </span>
-              <span className="text-xs text-blue-200">This takes 10-20 seconds</span>
-            </span>
-          ) : (
-            <><ChevronRight size={18} /> Start Session ({config.count} Questions)</>
+          {topics.length > 0 && (
+            <div className="relative">
+              <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Topic (optional)</label>
+              <select value={cfg.topic_id} onChange={e => setCfg(c => ({ ...c, topic_id: e.target.value }))} className={SEL}>
+                <option value="">All topics</option>
+                {topics.map(t => <option key={t.topic_id} value={t.topic_id}>{t.topic_name}</option>)}
+              </select>
+              <ChevronDown size={14} className="absolute right-3 top-[2.35rem] text-gray-400 pointer-events-none" />
+            </div>
           )}
+          <div className="relative">
+            <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Difficulty</label>
+            <select value={cfg.difficulty} onChange={e => setCfg(c => ({ ...c, difficulty: e.target.value }))} className={SEL}>
+              <option value="mixed">Mixed</option>
+              <option value="easy">Easy</option>
+              <option value="medium">Medium</option>
+              <option value="hard">Hard</option>
+            </select>
+            <ChevronDown size={14} className="absolute right-3 top-[2.35rem] text-gray-400 pointer-events-none" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Number of Questions: {cfg.num_questions}</label>
+            <input type="range" min="5" max="30" step="5" value={cfg.num_questions} onChange={e => setCfg(c => ({ ...c, num_questions: Number(e.target.value) }))}
+              className="w-full accent-indigo-600" />
+            <div className="flex justify-between text-xs text-gray-400 mt-1"><span>5</span><span>30</span></div>
+          </div>
+        </div>
+        <button onClick={start} disabled={!cfg.subject_id}
+          className="w-full mt-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-bold shadow-md hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2">
+          <Play size={16} />
+          Start Practice
         </button>
       </div>
     </div>
   );
 }
 
-// ─── Session View ────────────────────────────────────────────────────────────
-function SessionView({ session, onEnd }) {
-  const { questions, session_id, mode } = session;
-  const [current, setCurrent] = useState(0);
-  const [answers, setAnswers] = useState({});        // qId → selectedOption
-  const [feedback, setFeedback] = useState({});      // qId → { is_correct, correct_answer, explanation }
-  const [flagged, setFlagged] = useState(new Set());
-  const [elapsed, setElapsed] = useState(0);
+function QuestionView({ session, onEnd }) {
+  const questions = session?.questions || [];
+  const [idx, setIdx] = useState(0);
+  const [answers, setAnswers] = useState({});
+  const [feedback, setFeedback] = useState({});
   const [submitting, setSubmitting] = useState(false);
-  const [ending, setEnding] = useState(false);
-  const questionStartRef = useRef(null);
 
-  useEffect(() => {
-    const t = setInterval(() => setElapsed(e => e + 1), 1000);
-    return () => clearInterval(t);
-  }, []);
+  const q = questions[idx];
 
-  // Reset per-question timer when navigating
-  useEffect(() => { questionStartRef.current = Date.now(); }, [current]);
+  const answer = async (optionKey) => {
+    if (answers[idx] !== undefined) return;
+    setAnswers(a => ({ ...a, [idx]: optionKey }));
+    try {
+      const r = await api.post(`/student/practice/${session.session_id}/answer`, { question_id: q.question_id, selected_option: optionKey });
+      setFeedback(f => ({ ...f, [idx]: r.data }));
+    } catch {}
+  };
 
-  const q = questions[current];
-  const totalQ = questions.length;
-  const answered = Object.keys(answers).length;
-  const selectedAnswer = answers[q?.question_id];
-  const result = feedback[q?.question_id];
-  const isAnswered = !!selectedAnswer;
-  const showResult = mode === 'instant' && isAnswered;
-
-  const getTimeTaken = () => Math.round((Date.now() - questionStartRef.current) / 1000);
-
-  const handleSelect = useCallback(async (optId) => {
-    if (answers[q.question_id]) return; // already answered
-    const timeTaken = getTimeTaken();
-    setAnswers(prev => ({ ...prev, [q.question_id]: optId }));
+  const end = async () => {
     setSubmitting(true);
-    try {
-      const res = await api.post('/student/practice/submit-answer', {
-        session_id,
-        question_id: q.question_id,
-        selected_answer: optId,
-        time_taken_seconds: timeTaken,
-      });
-      setFeedback(prev => ({ ...prev, [q.question_id]: res.data }));
-    } catch { toast.error('Failed to save answer'); }
-    finally { setSubmitting(false); }
-  }, [q, answers, session_id]);
-
-  const handleEnd = async () => {
-    // In test mode, warn if questions unanswered
-    const unanswered = totalQ - answered;
-    if (unanswered > 0 && mode === 'test') {
-      if (!window.confirm(`You have ${unanswered} unanswered question${unanswered > 1 ? 's' : ''}. Submit anyway?`)) return;
-    }
-    setEnding(true);
-    try {
-      const res = await api.post('/student/practice/end', { session_id });
-      onEnd({ ...res.data, allAnswers: feedback, questions });
-    } catch { toast.error('Failed to end session'); }
-    finally { setEnding(false); }
+    try { const r = await api.post(`/student/practice/${session.session_id}/end`); onEnd(r.data); }
+    catch {}
+    setSubmitting(false);
   };
 
-  const toggleFlag = () => setFlagged(prev => {
-    const next = new Set(prev);
-    next.has(q.question_id) ? next.delete(q.question_id) : next.add(q.question_id);
-    return next;
-  });
-
-  // Dot color for navigator
-  const dotColor = (idx) => {
-    const qId = questions[idx].question_id;
-    if (flagged.has(qId)) return idx === current ? 'bg-yellow-500 ring-2 ring-yellow-300' : 'bg-yellow-400';
-    if (feedback[qId]) return feedback[qId].is_correct
-      ? (idx === current ? 'bg-green-500 ring-2 ring-green-300' : 'bg-green-400')
-      : (idx === current ? 'bg-red-500 ring-2 ring-red-300' : 'bg-red-400');
-    if (answers[qId]) return idx === current ? 'bg-blue-500 ring-2 ring-blue-300' : 'bg-blue-400';
-    return idx === current ? 'bg-gray-400 ring-2 ring-gray-300' : 'bg-gray-200';
-  };
-
-  const options = q?.options || [];
-  const diffLabel = q?.difficulty ? ['', 'Easy', 'Easy', 'Medium', 'Hard', 'Hard'][q.difficulty] || '' : '';
-  const diffColor = ['', 'text-green-600', 'text-green-600', 'text-yellow-600', 'text-red-600', 'text-red-600'][q?.difficulty] || '';
+  const opts = q ? [["A", q.option_a], ["B", q.option_b], ["C", q.option_c], ["D", q.option_d]].filter(o => o[1]) : [];
+  const fb = feedback[idx];
+  const chosen = answers[idx];
 
   return (
-    <div className="p-4 max-w-3xl mx-auto">
+    <div className="max-w-2xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4 bg-white rounded-xl px-4 py-3 shadow-sm border border-gray-100">
-        <div className="flex items-center gap-3">
-          <BookOpen size={18} className="text-blue-600" />
-          <span className="font-semibold text-gray-800 text-sm">Question {current + 1} / {totalQ}</span>
-          <span className="text-xs text-gray-400">{answered} answered</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="flex items-center gap-1 text-sm font-mono text-gray-600">
-            <Clock size={14} className="text-blue-500" /> {fmtTime(elapsed)}
-          </span>
-          <button onClick={handleEnd} disabled={ending}
-            className="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded-lg disabled:opacity-60">
-            {ending ? 'Submitting…' : 'End Session'}
-          </button>
+      <div className="flex items-center justify-between mb-5">
+        <span className="text-sm font-bold text-gray-500 dark:text-gray-400">Question {idx + 1} / {questions.length}</span>
+        <div className="flex gap-1">
+          {questions.map((_, i) => (
+            <div key={i} className={"w-2 h-2 rounded-full transition-colors " + (answers[i] !== undefined ? (feedback[i]?.is_correct ? "bg-emerald-500" : "bg-red-400") : i === idx ? "bg-indigo-500" : "bg-gray-200 dark:bg-gray-700")} />
+          ))}
         </div>
       </div>
 
       {/* Progress bar */}
-      <div className="w-full bg-gray-200 rounded-full h-1.5 mb-4">
-        <div className="bg-blue-500 h-1.5 rounded-full transition-all duration-300" style={{ width: `${(answered / totalQ) * 100}%` }} />
+      <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-1.5 mb-6">
+        <div className="h-1.5 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all" style={{ width: `${((idx + 1) / questions.length) * 100}%` }} />
       </div>
 
-      {/* Question Navigator */}
-      <div className="bg-white rounded-xl px-4 py-3 shadow-sm border border-gray-100 mb-4">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {questions.map((_, idx) => (
-            <button key={idx} onClick={() => setCurrent(idx)}
-              className={`w-7 h-7 rounded-full text-xs font-bold text-white transition-all ${dotColor(idx)}`}>
-              {idx + 1}
-            </button>
-          ))}
-          <div className="ml-auto flex items-center gap-3 text-xs text-gray-400">
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-green-400 inline-block" /> Correct</span>
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-400 inline-block" /> Wrong</span>
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-blue-400 inline-block" /> Answered</span>
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-yellow-400 inline-block" /> Flagged</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Question Card */}
-      <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 mb-4">
-        <div className="flex items-start justify-between mb-1">
-          <div className="flex items-center gap-2">
-            {q?.topic_name && <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">{q.topic_name}</span>}
-            {diffLabel && <span className={`text-xs font-medium ${diffColor}`}>{diffLabel}</span>}
-          </div>
-          <button onClick={toggleFlag} title="Flag for review"
-            className={`p-1.5 rounded-lg transition-colors ${flagged.has(q?.question_id) ? 'text-yellow-500 bg-yellow-50' : 'text-gray-300 hover:text-yellow-400 hover:bg-yellow-50'}`}>
-            <Flag size={15} />
-          </button>
-        </div>
-
-        <p className="text-gray-800 text-sm leading-relaxed mb-4 mt-2">{q?.question_text}</p>
-
-        <div className="space-y-2">
-          {options.map(opt => {
-            let cls = 'w-full text-left px-4 py-3 rounded-lg border text-sm transition-all flex items-center gap-3 ';
-            if (showResult) {
-              if (opt.id === result?.correct_answer) cls += 'bg-green-50 border-green-400 text-green-800';
-              else if (opt.id === selectedAnswer) cls += 'bg-red-50 border-red-400 text-red-800';
-              else cls += 'border-gray-200 text-gray-400';
-            } else if (selectedAnswer === opt.id) {
-              cls += 'bg-blue-50 border-blue-400 text-blue-800';
-            } else {
-              cls += 'border-gray-200 hover:border-blue-300 hover:bg-blue-50 text-gray-700';
+      {/* Question card */}
+      <div className={"rounded-2xl border p-6 mb-4 " + C}>
+        {q?.difficulty && <span className={"text-xs font-semibold px-2 py-0.5 rounded-full mb-3 inline-block " + (q.difficulty === "hard" ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" : q.difficulty === "medium" ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-500" : "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400")}>{q.difficulty}</span>}
+        <p className="text-base font-semibold text-gray-800 dark:text-gray-100 mb-5">{q?.question_text}</p>
+        <div className="space-y-2.5">
+          {opts.map(([key, text]) => {
+            let cls = "border border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-600 bg-white dark:bg-gray-800/60 hover:bg-indigo-50 dark:hover:bg-indigo-950/30";
+            if (chosen !== undefined) {
+              if (key === fb?.correct_option) cls = "border-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-600";
+              else if (key === chosen && !fb?.is_correct) cls = "border-red-400 bg-red-50 dark:bg-red-950/30 dark:border-red-600";
+              else cls = "border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800/40 opacity-60";
             }
-            const locked = isAnswered || submitting;
             return (
-              <button key={opt.id} onClick={() => handleSelect(opt.id)} disabled={locked} className={cls + (locked ? ' cursor-default' : '')}>
-                <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                  showResult && opt.id === result?.correct_answer ? 'bg-green-500 text-white'
-                  : showResult && opt.id === selectedAnswer ? 'bg-red-500 text-white'
-                  : selectedAnswer === opt.id ? 'bg-blue-500 text-white'
-                  : 'bg-gray-100 text-gray-500'
-                }`}>{opt.id}</span>
-                <span>{opt.text}</span>
-                {showResult && opt.id === result?.correct_answer && <CheckCircle size={15} className="ml-auto text-green-500 flex-shrink-0" />}
-                {showResult && opt.id === selectedAnswer && opt.id !== result?.correct_answer && <XCircle size={15} className="ml-auto text-red-500 flex-shrink-0" />}
+              <button key={key} onClick={() => answer(key)} disabled={chosen !== undefined}
+                className={"w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl border transition-all " + cls}>
+                <span className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-xs font-bold text-gray-600 dark:text-gray-300 flex-shrink-0">{key}</span>
+                <span className="text-sm text-gray-700 dark:text-gray-200">{text}</span>
+                {chosen !== undefined && key === fb?.correct_option && <CheckCircle2 size={16} className="ml-auto text-emerald-500 flex-shrink-0" />}
+                {chosen !== undefined && key === chosen && !fb?.is_correct && <XCircle size={16} className="ml-auto text-red-400 flex-shrink-0" />}
               </button>
             );
           })}
         </div>
-
-        {/* Instant feedback explanation */}
-        {showResult && result?.explanation && (
-          <div className={`mt-4 p-3 rounded-lg text-sm flex gap-2 ${result.is_correct ? 'bg-green-50 text-green-800' : 'bg-orange-50 text-orange-800'}`}>
-            <AlertCircle size={15} className="flex-shrink-0 mt-0.5" />
-            <div><strong>{result.is_correct ? 'Correct! ' : 'Incorrect. '}</strong>{result.explanation}</div>
-          </div>
-        )}
-
-        {/* Test mode: show selected indication */}
-        {mode === 'test' && isAnswered && !showResult && (
-          <div className="mt-3 text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2 flex items-center gap-1">
-            <CheckCircle size={13} /> Answer saved. Results shown after you finish the session.
+        {fb?.explanation && chosen !== undefined && (
+          <div className="mt-4 p-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40">
+            <p className="text-xs text-indigo-700 dark:text-indigo-300 font-semibold mb-0.5">Explanation</p>
+            <p className="text-xs text-indigo-600 dark:text-indigo-400">{fb.explanation}</p>
           </div>
         )}
       </div>
 
-      {/* Navigation */}
-      <div className="flex items-center gap-3">
-        <button onClick={() => setCurrent(c => Math.max(0, c - 1))} disabled={current === 0}
-          className="flex items-center gap-1 px-4 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40">
-          <ChevronLeft size={16} /> Prev
+      {/* Nav buttons */}
+      <div className="flex justify-between gap-3">
+        <button onClick={() => setIdx(i => i - 1)} disabled={idx === 0}
+          className="px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40 transition-colors">
+          Previous
         </button>
-
-        {current < totalQ - 1 ? (
-          <button onClick={() => setCurrent(c => c + 1)}
-            className="flex-1 flex items-center justify-center gap-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
-            {isAnswered ? 'Next' : 'Skip'} <ChevronRight size={16} />
+        {idx < questions.length - 1 ? (
+          <button onClick={() => setIdx(i => i + 1)} disabled={answers[idx] === undefined}
+            className="px-6 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity">
+            Next
           </button>
         ) : (
-          <button onClick={handleEnd} disabled={ending}
-            className="flex-1 flex items-center justify-center gap-1 px-4 py-2.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-60">
-            <CheckCircle size={16} /> {ending ? 'Submitting…' : 'Finish Session'}
+          <button onClick={end} disabled={submitting || questions.some((_, i) => answers[i] === undefined)}
+            className="px-6 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-sm font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity">
+            {submitting ? "Finishing..." : "Finish"}
           </button>
         )}
       </div>
@@ -367,156 +201,60 @@ function SessionView({ session, onEnd }) {
   );
 }
 
-// ─── Results View ─────────────────────────────────────────────────────────────
-function ResultsView({ result, onRetry }) {
-  const [showReview, setShowReview] = useState(false);
-  const [expandedIdx, setExpandedIdx] = useState(null);
-
-  const { score, total, accuracy_percent, time_taken_seconds, answers = [] } = result;
-  const timeMin = Math.floor((time_taken_seconds || 0) / 60);
-  const timeSec = (time_taken_seconds || 0) % 60;
-
-  // Topic breakdown from answers
-  const topicMap = {};
-  answers.forEach(a => {
-    const topic = a.topic_name || 'General';
-    if (!topicMap[topic]) topicMap[topic] = { correct: 0, total: 0 };
-    topicMap[topic].total++;
-    if (a.is_correct) topicMap[topic].correct++;
-  });
-  const topicBreakdown = Object.entries(topicMap).map(([name, v]) => ({
-    name, correct: v.correct, total: v.total,
-    pct: v.total > 0 ? Math.round((v.correct / v.total) * 100) : 0,
-  })).sort((a, b) => a.pct - b.pct);
-
-  const grade = accuracy_percent >= 80 ? { label: 'Excellent', color: 'text-green-600', bg: 'bg-green-50' }
-    : accuracy_percent >= 60 ? { label: 'Good', color: 'text-blue-600', bg: 'bg-blue-50' }
-    : accuracy_percent >= 40 ? { label: 'Average', color: 'text-yellow-600', bg: 'bg-yellow-50' }
-    : { label: 'Needs Work', color: 'text-red-600', bg: 'bg-red-50' };
-
+function ResultView({ result, onRestart }) {
+  const score = result?.score || 0;
+  const r = result?.results || {};
   return (
-    <div className="p-4 max-w-2xl mx-auto">
-      {/* Score Card */}
-      <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 mb-4 text-center">
-        <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-semibold mb-3 ${grade.bg} ${grade.color}`}>
-          <TrendingUp size={14} /> {grade.label}
+    <div className="max-w-md mx-auto text-center">
+      <div className={"rounded-2xl border p-8 " + C}>
+        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center mx-auto mb-4 shadow-xl">
+          <span className="text-3xl font-black text-white">{Math.round(score)}</span>
         </div>
-        <div className="text-5xl font-bold text-gray-800 mb-1">{Math.round(accuracy_percent || 0)}%</div>
-        <p className="text-gray-500 text-sm">Accuracy</p>
-        <div className="grid grid-cols-3 gap-3 mt-5">
-          <div className="p-3 bg-green-50 rounded-xl">
-            <p className="text-xl font-bold text-green-700">{score ?? 0}</p>
-            <p className="text-xs text-gray-500">Correct</p>
+        <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-1">Practice Complete!</h2>
+        <p className="text-gray-400 text-sm mb-6">Here is how you did</p>
+        <div className="grid grid-cols-3 gap-3 mb-6">
+          <div className="bg-emerald-50 dark:bg-emerald-950/30 rounded-xl p-3">
+            <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">{r.correct || 0}</p>
+            <p className="text-xs text-gray-400">Correct</p>
           </div>
-          <div className="p-3 bg-red-50 rounded-xl">
-            <p className="text-xl font-bold text-red-600">{(total ?? 0) - (score ?? 0)}</p>
-            <p className="text-xs text-gray-500">Wrong</p>
+          <div className="bg-red-50 dark:bg-red-950/30 rounded-xl p-3">
+            <p className="text-xl font-bold text-red-500 dark:text-red-400">{r.wrong || 0}</p>
+            <p className="text-xs text-gray-400">Wrong</p>
           </div>
-          <div className="p-3 bg-gray-50 rounded-xl">
-            <p className="text-xl font-bold text-gray-700">{timeMin}m {timeSec}s</p>
-            <p className="text-xs text-gray-500">Time</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Topic Breakdown */}
-      {topicBreakdown.length > 0 && (
-        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 mb-4">
-          <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-            <Target size={16} className="text-blue-500" /> Topic Breakdown
-          </h3>
-          <div className="space-y-2.5">
-            {topicBreakdown.map(t => (
-              <div key={t.name}>
-                <div className="flex justify-between text-xs mb-1">
-                  <span className="text-gray-600 font-medium">{t.name}</span>
-                  <span className={t.pct >= 60 ? 'text-green-600' : 'text-red-600'}>{t.correct}/{t.total} ({t.pct}%)</span>
-                </div>
-                <div className="w-full bg-gray-100 rounded-full h-1.5">
-                  <div className={`h-1.5 rounded-full transition-all ${t.pct >= 60 ? 'bg-green-500' : t.pct >= 40 ? 'bg-yellow-400' : 'bg-red-500'}`}
-                    style={{ width: `${t.pct}%` }} />
-                </div>
-              </div>
-            ))}
+          <div className="bg-gray-50 dark:bg-gray-800/60 rounded-xl p-3">
+            <p className="text-xl font-bold text-gray-600 dark:text-gray-300">{r.skipped || 0}</p>
+            <p className="text-xs text-gray-400">Skipped</p>
           </div>
         </div>
-      )}
-
-      {/* Answer Review */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-4">
-        <button onClick={() => setShowReview(v => !v)}
-          className="w-full flex items-center justify-between px-5 py-4 text-sm font-semibold text-gray-800">
-          <span className="flex items-center gap-2"><ListChecks size={16} className="text-purple-500" /> Review All Answers</span>
-          <ChevronRight size={16} className={`transition-transform ${showReview ? 'rotate-90' : ''}`} />
+        <button onClick={onRestart} className="flex items-center gap-2 mx-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-bold hover:opacity-90 transition-opacity">
+          <RotateCcw size={15} />
+          Practice Again
         </button>
-        {showReview && (
-          <div className="border-t border-gray-100">
-            {answers.map((a, idx) => {
-              const isOpen = expandedIdx === idx;
-              const isCorrect = !!a.is_correct;
-              return (
-                <div key={a.question_id || idx} className="border-b border-gray-50 last:border-0">
-                  <button onClick={() => setExpandedIdx(isOpen ? null : idx)}
-                    className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-gray-50 transition-colors">
-                    <span className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold text-white ${isCorrect ? 'bg-green-500' : 'bg-red-500'}`}>
-                      {idx + 1}
-                    </span>
-                    <p className="text-xs text-gray-700 flex-1 line-clamp-1">{a.question_text}</p>
-                    {isCorrect ? <CheckCircle size={14} className="text-green-500 flex-shrink-0" /> : <XCircle size={14} className="text-red-500 flex-shrink-0" />}
-                    <ChevronRight size={14} className={`text-gray-400 flex-shrink-0 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
-                  </button>
-                  {isOpen && (
-                    <div className="px-5 pb-4 space-y-2">
-                      <p className="text-sm text-gray-700">{a.question_text}</p>
-                      <div className="space-y-1.5">
-                        {(a.options || []).map(opt => {
-                          let cls = 'flex items-center gap-2 px-3 py-2 rounded-lg text-xs ';
-                          if (opt.id === a.correct_answer) cls += 'bg-green-50 text-green-800 border border-green-200';
-                          else if (opt.id === a.selected_answer) cls += 'bg-red-50 text-red-800 border border-red-200';
-                          else cls += 'text-gray-500';
-                          return (
-                            <div key={opt.id} className={cls}>
-                              <span className="font-bold w-4">{opt.id}.</span> {opt.text}
-                              {opt.id === a.correct_answer && <CheckCircle size={12} className="ml-auto text-green-500" />}
-                            </div>
-                          );
-                        })}
-                      </div>
-                      {a.explanation && (
-                        <div className="p-2.5 bg-blue-50 rounded-lg text-xs text-blue-800">
-                          <strong>Explanation:</strong> {a.explanation}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
       </div>
-
-      <button onClick={onRetry}
-        className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-xl transition-colors">
-        <RotateCcw size={16} /> Start Another Session
-      </button>
     </div>
   );
 }
 
-// ─── Root ─────────────────────────────────────────────────────────────────────
 export default function Practice() {
-  const [view, setView] = useState('setup');
+  const [view, setView] = useState("setup");
   const [session, setSession] = useState(null);
   const [result, setResult] = useState(null);
 
-  if (view === 'session') return (
-    <SessionView session={session} onEnd={r => { setResult(r); setView('results'); }} />
-  );
-  if (view === 'results') return (
-    <ResultsView result={result} onRetry={() => { setView('setup'); setSession(null); setResult(null); }} />
-  );
   return (
-    <SetupView onStart={s => { setSession(s); setView('session'); }} />
+    <div className="p-6 max-w-3xl mx-auto">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+          <Zap size={18} className="text-white" />
+        </div>
+        <div>
+          <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Practice</h1>
+          <p className="text-xs text-gray-400">AI-powered adaptive quiz</p>
+        </div>
+      </div>
+
+      {view === "setup" && <SetupView onStart={data => { setSession(data); setView("quiz"); }} />}
+      {view === "quiz" && <QuestionView session={session} onEnd={data => { setResult(data); setView("result"); }} />}
+      {view === "result" && <ResultView result={result} onRestart={() => { setSession(null); setResult(null); setView("setup"); }} />}
+    </div>
   );
 }

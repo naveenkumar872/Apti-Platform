@@ -202,4 +202,61 @@ async function generateAIQuestions({ topicName, subjectName, count = 10, difficu
   return result;
 }
 
-module.exports = { generateAIQuestions };
+function buildCompanyPrompt(companyName, topics, year, count) {
+  return `You are an expert aptitude question generator for Indian campus placement exams.
+
+Generate exactly ${count} multiple-choice questions simulating the ${year} ${companyName} placement aptitude test.
+
+Topics to cover (mix proportionally): ${topics}
+
+Requirements:
+- Each question must have exactly 4 options: A, B, C, D
+- Match ${companyName}'s typical placement test style and difficulty
+- correct_answer must be exactly one of: "A", "B", "C", "D"
+- Include a "topic_name" field indicating which topic this question belongs to
+- Provide a clear step-by-step explanation
+- Use only plain ASCII characters -- no smart quotes, no special symbols
+- Escape any double quotes inside string values with backslash
+
+Return ONLY a valid JSON array (no markdown, no text outside the array):
+[
+  {
+    "question_text": "...",
+    "options": [
+      {"id": "A", "text": "..."},
+      {"id": "B", "text": "..."},
+      {"id": "C", "text": "..."},
+      {"id": "D", "text": "..."}
+    ],
+    "correct_answer": "A",
+    "topic_name": "Percentages",
+    "explanation": "Step-by-step: ..."
+  }
+]`;
+}
+
+/**
+ * Generate company-specific placement questions for a given year
+ */
+async function generateCompanyYearQuestions({ companyName, topics, year, count = 25 }) {
+  const topicsStr = topics.length > 0 ? topics.join(', ') : 'Arithmetic, Logical Reasoning, Verbal Ability, Data Interpretation';
+  const prompt = buildCompanyPrompt(companyName, topicsStr, year, count);
+
+  try {
+    console.log(`[AI] Cerebras → generating ${count} questions for ${companyName} ${year}`);
+    const content = await callCerebras(prompt);
+    const result = parseAndValidate(content);
+    console.log(`[AI] Cerebras ✓ returned ${result.length} questions for ${year}`);
+    return result;
+  } catch (cerebrasErr) {
+    console.warn(`[AI] Cerebras failed for ${year} (${cerebrasErr.message}), falling back to SambaNova...`);
+  }
+
+  console.log(`[AI] SambaNova → generating ${count} questions for ${companyName} ${year}`);
+  const content = await callSambaNova(prompt);
+  const result = parseAndValidate(content);
+  console.log(`[AI] SambaNova ✓ returned ${result.length} questions for ${year}`);
+  return result;
+}
+
+module.exports = { generateAIQuestions, generateCompanyYearQuestions };

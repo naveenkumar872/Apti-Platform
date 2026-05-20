@@ -12,6 +12,7 @@ router.get('/dashboard', studentController.getDashboard);
 
 // Subjects (with topics) — for Practice page topic picker
 router.get('/subjects', studentController.getSubjects);
+router.get('/topics/:id/concepts', studentController.getConceptsByTopic);
 
 // Study Materials
 router.get('/materials', studentController.getMaterials);
@@ -46,6 +47,8 @@ router.post('/plan/tasks/:id/complete', studentController.completeTask);
 // Company Corner
 router.get('/companies', studentController.getCompanies);
 router.get('/companies/:id', studentController.getCompanyById);
+router.post('/companies/:id/generate-questions', studentController.generateCompanyQuestions);
+router.post('/companies/:id/topic-questions', studentController.generateTopicQuestions);
 
 // Leaderboard
 router.get('/leaderboard', studentController.getLeaderboard);

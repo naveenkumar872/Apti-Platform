@@ -939,6 +939,67 @@ const getCompanyById = async (req, res, next) => {
   }
 };
 
+/** POST /student/companies/:id/generate-questions */
+const generateCompanyQuestions = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { year } = req.body;
+
+    if (!year || year < 2010 || year > new Date().getFullYear()) {
+      return res.status(400).json({ error: 'Invalid year. Must be between 2010 and current year.' });
+    }
+
+    const company = await query('SELECT * FROM companies WHERE company_id = ?', [id]);
+    if (company.rows.length === 0) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
+
+    const co = company.rows[0];
+    let topics = co.important_topics;
+    if (typeof topics === 'string') {
+      try { topics = JSON.parse(topics); } catch { topics = []; }
+    }
+    if (!Array.isArray(topics)) topics = [];
+
+    const { generateCompanyYearQuestions } = require('../utils/aiQuestions');
+    const questions = await generateCompanyYearQuestions({
+      companyName: co.name,
+      topics,
+      year: parseInt(year),
+      count: 25
+    });
+
+    res.json({ company: co.name, year: parseInt(year), questions });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/** POST /student/companies/:id/topic-questions */
+const generateTopicQuestions = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { topic } = req.body;
+
+    if (!topic) return res.status(400).json({ error: 'Topic is required' });
+
+    const company = await query('SELECT name FROM companies WHERE company_id = ?', [id]);
+    if (company.rows.length === 0) return res.status(404).json({ error: 'Company not found' });
+
+    const { generateAIQuestions } = require('../utils/aiQuestions');
+    const questions = await generateAIQuestions({
+      topicName: topic,
+      subjectName: `${company.rows[0].name} placement aptitude`,
+      count: 5,
+      difficulty: 'medium'
+    });
+
+    res.json({ topic, questions });
+  } catch (err) {
+    next(err);
+  }
+};
+
 /** GET /student/leaderboard */
 const getLeaderboard = async (req, res, next) => {
   try {
@@ -1106,12 +1167,25 @@ const getSubjects = async (req, res, next) => {
   }
 };
 
+/** GET /student/topics/:id/concepts */
+const getConceptsByTopic = async (req, res, next) => {
+  try {
+    const result = await query(
+      'SELECT concept_id, name, description FROM concepts WHERE topic_id = ? ORDER BY name',
+      [req.params.id]
+    );
+    res.json({ concepts: result.rows });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getDashboard, getMaterials, getMaterialById, markLearned, bookmarkMaterial,
   getNotes, startPractice, submitPracticeAnswer, endPractice,
   getAssignedTests, startTest, saveTestAnswer, submitTest, reportViolation,
   getReports, getReportById, generatePlan, getCurrentPlan, completeTask,
-  getCompanies, getCompanyById, getLeaderboard,
+  getCompanies, getCompanyById, generateCompanyQuestions, generateTopicQuestions, getLeaderboard,
   addBookmark, getBookmarks, removeBookmark,
-  postDoubt, getDoubts, answerDoubt, getSkillProfile, getSubjects
+  postDoubt, getDoubts, answerDoubt, getSkillProfile, getSubjects, getConceptsByTopic
 };

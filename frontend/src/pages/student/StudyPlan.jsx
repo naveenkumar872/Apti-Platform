@@ -1,141 +1,110 @@
-import React, { useEffect, useState } from 'react';
-import api from '../../services/api';
-import toast from 'react-hot-toast';
-import { CheckCircle, Circle, Zap, Calendar } from 'lucide-react';
+﻿import { useEffect, useState } from "react";
+import api from "../../services/api";
+import { CalendarDays, Sparkles, CheckCircle2, Circle, RefreshCw } from "lucide-react";
+
+const C = "bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800";
 
 export default function StudyPlan() {
   const [plan, setPlan] = useState(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
 
-  const fetchPlan = () => {
+  const load = () => {
     setLoading(true);
-    api.get('/student/plan')
-      .then(r => setPlan(r.data.plan))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    api.get("/student/plan").then(r => setPlan(r.data.plan || null)).catch(() => {}).finally(() => setLoading(false));
   };
+  useEffect(() => { load(); }, []);
 
-  useEffect(() => { fetchPlan(); }, []);
-
-  const generatePlan = async () => {
+  const generate = async () => {
     setGenerating(true);
-    try {
-      const res = await api.post('/student/plan/generate');
-      setPlan(res.data.plan);
-      toast.success('Study plan generated!');
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to generate plan');
-    } finally {
-      setGenerating(false);
-    }
+    try { const r = await api.post("/student/plan/generate"); setPlan(r.data.plan || null); }
+    catch {}
+    setGenerating(false);
   };
 
-  const completeTask = async (taskId) => {
+  const complete = async (taskId) => {
     try {
       await api.post(`/student/plan/tasks/${taskId}/complete`);
-      setPlan(prev => ({
-        ...prev,
-        tasks: prev.tasks.map(t => t.task_id === taskId ? { ...t, is_completed: true } : t),
+      setPlan(p => ({
+        ...p,
+        tasks: p.tasks.map(t => t.task_id === taskId ? { ...t, is_completed: true } : t)
       }));
-      toast.success('Task completed!');
-    } catch { toast.error('Failed'); }
+    } catch {}
   };
 
-  if (loading) return <div className="p-6 animate-pulse space-y-4">{[...Array(3)].map((_, i) => <div key={i} className="h-20 bg-gray-200 rounded-xl" />)}</div>;
-
-  if (!plan) return (
-    <div className="p-6 max-w-lg mx-auto text-center">
-      <div className="bg-white rounded-2xl p-10 shadow-sm border border-gray-100">
-        <Calendar size={48} className="text-purple-500 mx-auto mb-4" />
-        <h2 className="text-xl font-bold text-gray-800 mb-2">No Active Study Plan</h2>
-        <p className="text-gray-500 text-sm mb-6">Generate a personalized plan based on your weak areas and target companies</p>
-        <button
-          onClick={generatePlan}
-          disabled={generating}
-          className="bg-purple-600 text-white px-6 py-3 rounded-xl hover:bg-purple-700 disabled:opacity-60 flex items-center gap-2 mx-auto"
-        >
-          <Zap size={18} />
-          {generating ? 'Generating...' : 'Generate My Plan'}
-        </button>
-      </div>
-    </div>
-  );
-
-  const tasksByWeekDay = {};
-  (plan.tasks || []).forEach(t => {
-    const key = `Week ${t.week_number}`;
-    if (!tasksByWeekDay[key]) tasksByWeekDay[key] = {};
-    const dayKey = `Day ${t.day_number}`;
-    if (!tasksByWeekDay[key][dayKey]) tasksByWeekDay[key][dayKey] = [];
-    tasksByWeekDay[key][dayKey].push(t);
-  });
-
-  const completedCount = (plan.tasks || []).filter(t => t.is_completed).length;
-  const totalCount = (plan.tasks || []).length;
-  const percent = totalCount ? Math.round((completedCount / totalCount) * 100) : 0;
+  const tasks = plan?.tasks || [];
+  const done = tasks.filter(t => t.is_completed).length;
+  const pct = tasks.length > 0 ? Math.round((done / tasks.length) * 100) : 0;
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="p-6 max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Study Plan</h1>
-        <button
-          onClick={generatePlan}
-          disabled={generating}
-          className="text-sm bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-60"
-        >
-          {generating ? 'Generating...' : 'Regenerate'}
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
+            <CalendarDays size={18} className="text-white" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Study Plan</h1>
+            <p className="text-xs text-gray-400">AI-generated personal plan</p>
+          </div>
+        </div>
+        <button onClick={generate} disabled={generating}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-sm font-semibold shadow-sm hover:opacity-90 transition-opacity disabled:opacity-60">
+          {generating ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
+          {plan ? "Regenerate" : "Generate Plan"}
         </button>
       </div>
 
-      {/* Progress */}
-      <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 mb-6">
-        <div className="flex justify-between text-sm mb-2">
-          <span className="font-medium text-gray-700">Overall Progress</span>
-          <span className="font-bold text-purple-600">{percent}% ({completedCount}/{totalCount} tasks)</span>
+      {loading ? (
+        <div className="space-y-3">{[...Array(5)].map((_, i) => <div key={i} className="h-16 bg-gray-200 dark:bg-gray-800 animate-pulse rounded-2xl" />)}</div>
+      ) : !plan ? (
+        <div className={"rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700 p-14 text-center " + C}>
+          <Sparkles size={36} className="text-gray-300 mx-auto mb-3" />
+          <p className="text-gray-500 dark:text-gray-400 font-medium">No plan yet</p>
+          <p className="text-gray-400 text-sm mt-1">Click "Generate Plan" to get your personalized study plan</p>
         </div>
-        <div className="w-full bg-gray-200 rounded-full h-2.5">
-          <div className="bg-purple-600 rounded-full h-2.5 transition-all" style={{ width: `${percent}%` }} />
-        </div>
-      </div>
+      ) : (
+        <>
+          {/* Progress bar */}
+          <div className={"rounded-2xl border p-5 mb-5 " + C}>
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Overall Progress</span>
+              <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{pct}%</span>
+            </div>
+            <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-2.5">
+              <div className="h-2.5 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all duration-500" style={{ width: `${pct}%` }} />
+            </div>
+            <p className="text-xs text-gray-400 mt-2">{done} of {tasks.length} tasks completed</p>
+          </div>
 
-      {/* Weekly Plan */}
-      {Object.entries(tasksByWeekDay).map(([week, days]) => (
-        <div key={week} className="mb-6">
-          <h2 className="text-lg font-semibold text-gray-800 mb-3">{week}</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {Object.entries(days).map(([day, tasks]) => (
-              <div key={day} className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-                <h3 className="text-sm font-medium text-gray-600 mb-3">{day}</h3>
-                <div className="space-y-2">
-                  {tasks.map(task => (
-                    <div key={task.task_id} className="flex items-start gap-3">
-                      <button
-                        onClick={() => !task.is_completed && completeTask(task.task_id)}
-                        disabled={task.is_completed}
-                        className="mt-0.5 flex-shrink-0"
-                      >
-                        {task.is_completed
-                          ? <CheckCircle size={18} className="text-green-500" />
-                          : <Circle size={18} className="text-gray-300 hover:text-purple-500 transition-colors" />
-                        }
-                      </button>
-                      <div className={task.is_completed ? 'opacity-60 line-through' : ''}>
-                        <p className="text-sm text-gray-800">{task.description || task.topic_name}</p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-xs text-gray-400 capitalize">{task.task_type}</span>
-                          <span className="text-xs text-gray-400">·</span>
-                          <span className="text-xs text-gray-400">{task.estimated_minutes} min</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+          {/* Goal */}
+          {plan.goal && (
+            <div className="mb-4 px-4 py-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/40">
+              <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">Goal: {plan.goal}</p>
+            </div>
+          )}
+
+          {/* Tasks */}
+          <div className="space-y-2">
+            {tasks.map(task => (
+              <div key={task.task_id} className={"flex items-center gap-4 p-4 rounded-2xl border transition-all " + C + (task.is_completed ? " opacity-60" : "")}>
+                <button onClick={() => !task.is_completed && complete(task.task_id)} className="flex-shrink-0">
+                  {task.is_completed
+                    ? <CheckCircle2 size={22} className="text-emerald-500" />
+                    : <Circle size={22} className="text-gray-300 dark:text-gray-600 hover:text-emerald-500 transition-colors" />}
+                </button>
+                <div className="flex-1 min-w-0">
+                  <p className={"text-sm font-medium " + (task.is_completed ? "line-through text-gray-400" : "text-gray-800 dark:text-gray-100")}>{task.task_description}</p>
+                  {task.day_label && <p className="text-xs text-gray-400 mt-0.5">{task.day_label}</p>}
                 </div>
+                {task.priority === "high" && (
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400">High</span>
+                )}
               </div>
             ))}
           </div>
-        </div>
-      ))}
+        </>
+      )}
     </div>
   );
 }

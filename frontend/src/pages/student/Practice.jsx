@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import {
-  BarChart2, CheckCircle, XCircle, Clock, ChevronRight, ChevronLeft,
-  Flag, SkipForward, BookOpen, Target, Zap, ListChecks, RotateCcw,
+  CheckCircle, XCircle, Clock, ChevronRight, ChevronLeft,
+  Flag, BookOpen, Target, Zap, ListChecks, RotateCcw,
   TrendingUp, AlertCircle
 } from 'lucide-react';
 
@@ -28,18 +28,31 @@ function SetupView({ onStart }) {
 
   const set = (k, v) => setConfig(c => ({ ...c, [k]: v, ...(k === 'subject_id' ? { topic_id: '' } : {}) }));
 
+  const [loadingStep, setLoadingStep] = useState(0);
+
   const handleStart = async () => {
     setLoading(true);
+    setLoadingStep(0);
+    const steps = [
+      { delay: 800,  msg: 1 },
+      { delay: 3000, msg: 2 },
+      { delay: 6000, msg: 3 },
+    ];
+    const timers = steps.map(({ delay, msg }) => setTimeout(() => setLoadingStep(msg), delay));
     try {
       const res = await api.post('/student/practice/start', {
         topic_id: config.topic_id || undefined,
         count: Number(config.count),
         difficulty: config.difficulty || undefined,
-      });
+      }, { timeout: 60000 });
       onStart({ ...res.data, mode: config.mode });
     } catch (err) {
-      toast.error(err.response?.data?.error || 'No questions found for selected filters. Try different options.');
-    } finally { setLoading(false); }
+      toast.error(err.response?.data?.error || 'AI generation timed out. Please try again.');
+    } finally {
+      timers.forEach(clearTimeout);
+      setLoading(false);
+      setLoadingStep(0);
+    }
   };
 
   const modes = [
@@ -127,7 +140,16 @@ function SetupView({ onStart }) {
         <button onClick={handleStart} disabled={loading}
           className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-lg transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
           {loading ? (
-            <span className="flex items-center gap-2"><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Loading questions...</span>
+            <span className="flex flex-col items-center gap-1 w-full">
+              <span className="flex items-center gap-2">
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                {loadingStep === 0 && 'Connecting to AI...'}
+                {loadingStep === 1 && 'Generating your questions...'}
+                {loadingStep === 2 && 'Almost ready, crafting explanations...'}
+                {loadingStep === 3 && 'Saving session, just a moment...'}
+              </span>
+              <span className="text-xs text-blue-200">This takes 10-20 seconds</span>
+            </span>
           ) : (
             <><ChevronRight size={18} /> Start Session ({config.count} Questions)</>
           )}
@@ -147,7 +169,7 @@ function SessionView({ session, onEnd }) {
   const [elapsed, setElapsed] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [ending, setEnding] = useState(false);
-  const questionStartRef = useRef(Date.now());
+  const questionStartRef = useRef(null);
 
   useEffect(() => {
     const t = setInterval(() => setElapsed(e => e + 1), 1000);
@@ -350,7 +372,7 @@ function ResultsView({ result, onRetry }) {
   const [showReview, setShowReview] = useState(false);
   const [expandedIdx, setExpandedIdx] = useState(null);
 
-  const { score, total, accuracy_percent, time_taken_seconds, answers = [], questions = [], allAnswers = {} } = result;
+  const { score, total, accuracy_percent, time_taken_seconds, answers = [] } = result;
   const timeMin = Math.floor((time_taken_seconds || 0) / 60);
   const timeSec = (time_taken_seconds || 0) % 60;
 

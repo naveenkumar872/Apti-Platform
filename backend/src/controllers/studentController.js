@@ -244,133 +244,81 @@ const startPractice = async (req, res, next) => {
 
     const student_id = req.user.user_id;
 
-    let where = 'WHERE q.is_active = 1';
-    const params = [];
+    // ── Always generate all questions via AI ──
+    let topicName = null, subjectName = null, conceptId = null;
 
-    if (concept_ids && concept_ids.length > 0) {
-      where += ' AND q.concept_id IN (?)';
-      params.push(concept_ids);
-    } else if (topic_ids && topic_ids.length > 0) {
-      where += ' AND c.topic_id IN (?)';
-      params.push(topic_ids);
-    }
-
-    if (difficulty !== 'mixed') {
-      const diffMap = { easy: [1, 2], medium: [2, 3, 4], hard: [4, 5] };
-      where += ' AND q.difficulty IN (?)';
-      params.push(diffMap[difficulty] || [1, 2, 3, 4, 5]);
-    }
-
-    const questions = await query(
-      `SELECT q.question_id, q.question_text, q.question_type, q.options, q.difficulty,
-              q.estimated_time_seconds, c.name as concept_name, t.name as topic_name
-       FROM questions q
-       JOIN concepts c ON c.concept_id = q.concept_id
-       JOIN topics t ON t.topic_id = c.topic_id
-       ${where}
-       ORDER BY RAND()
-       LIMIT ?`,
-      [...params, parseInt(num_questions)]
-    );
-
-    if (questions.rows.length === 0) {
-      // ── AI fallback: generate questions via SambaNova DeepSeek-V3.2 ──
-      try {
-        // Resolve topic/subject names and a valid concept_id for FK
-        let topicName = null, subjectName = null, conceptId = null;
-
-        if (topic_ids && topic_ids.length > 0) {
-          const topicInfo = await query(
-            `SELECT t.name as topic_name, s.name as subject_name, c.concept_id
-             FROM topics t
-             JOIN subjects s ON s.subject_id = t.subject_id
-             LEFT JOIN concepts c ON c.topic_id = t.topic_id
-             WHERE t.topic_id = ? LIMIT 1`,
-            [topic_ids[0]]
-          );
-          if (topicInfo.rows.length > 0) {
-            topicName  = topicInfo.rows[0].topic_name;
-            subjectName = topicInfo.rows[0].subject_name;
-            conceptId  = topicInfo.rows[0].concept_id;
-          }
-        }
-
-        if (!conceptId) {
-          const fallback = await query('SELECT concept_id FROM concepts ORDER BY RAND() LIMIT 1', []);
-          conceptId = fallback.rows[0]?.concept_id || null;
-        }
-
-        const diffLabel = (difficulty === 'mixed' || !difficulty) ? 'medium' : difficulty;
-
-        console.log(`[AI] Generating ${num_questions} "${diffLabel}" questions for topic="${topicName || 'General'}"`);
-
-        const aiQs = await generateAIQuestions({
-          topicName:   topicName   || 'General Aptitude',
-          subjectName: subjectName || 'Aptitude',
-          count:       num_questions,
-          difficulty:  diffLabel,
-        });
-
-        const diffNum = diffLabel === 'easy' ? 2 : diffLabel === 'hard' ? 4 : 3;
-        const insertedQuestions = [];
-
-        for (const q of aiQs.slice(0, num_questions)) {
-          const qId = uuidv4();
-          await query(
-            `INSERT INTO questions
-               (question_id, concept_id, question_text, question_type, options,
-                correct_answer, explanation, difficulty, source, is_active)
-             VALUES (?, ?, ?, 'mcq', ?, ?, ?, ?, 'ai_generated', 1)`,
-            [qId, conceptId, q.question_text, JSON.stringify(q.options),
-             q.correct_answer, q.explanation || '', diffNum]
-          );
-          insertedQuestions.push({
-            question_id:            qId,
-            question_text:          q.question_text,
-            question_type:          'mcq',
-            options:                q.options,
-            difficulty:             diffNum,
-            estimated_time_seconds: 60,
-            concept_name:           topicName || 'General',
-            topic_name:             topicName || 'General Aptitude',
-          });
-        }
-
-        const session_id = uuidv4();
-        await query(
-          `INSERT INTO practice_sessions
-             (session_id, student_id, question_ids, started_at, time_limit_minutes, status)
-           VALUES (?, ?, ?, NOW(), ?, 'in_progress')`,
-          [session_id, student_id,
-           JSON.stringify(insertedQuestions.map(q => q.question_id)),
-           time_limit || null]
-        );
-
-        return res.json({
-          session_id,
-          questions:    insertedQuestions,
-          total:        insertedQuestions.length,
-          ai_generated: true,
-        });
-      } catch (aiErr) {
-        console.error('[AI] Question generation failed:', aiErr.message);
-        return res.status(404).json({
-          error: 'No questions found. AI generation also failed — please try a different topic or check back later.',
-        });
+    if (topic_ids && topic_ids.length > 0) {
+      const topicInfo = await query(
+        `SELECT t.name as topic_name, s.name as subject_name, c.concept_id
+         FROM topics t
+         JOIN subjects s ON s.subject_id = t.subject_id
+         LEFT JOIN concepts c ON c.topic_id = t.topic_id
+         WHERE t.topic_id = ? LIMIT 1`,
+        [topic_ids[0]]
+      );
+      if (topicInfo.rows.length > 0) {
+        topicName   = topicInfo.rows[0].topic_name;
+        subjectName = topicInfo.rows[0].subject_name;
+        conceptId   = topicInfo.rows[0].concept_id;
       }
+    }
+
+    if (!conceptId) {
+      const fallback = await query('SELECT concept_id FROM concepts ORDER BY RAND() LIMIT 1', []);
+      conceptId = fallback.rows[0]?.concept_id || null;
+    }
+
+    const diffLabel = (difficulty === 'mixed' || !difficulty) ? 'medium' : difficulty;
+
+    console.log(`[AI] Generating ${num_questions} "${diffLabel}" questions for topic="${topicName || 'General Aptitude'}"`);
+
+    const aiQs = await generateAIQuestions({
+      topicName:   topicName   || 'General Aptitude',
+      subjectName: subjectName || 'Aptitude',
+      count:       num_questions,
+      difficulty:  diffLabel,
+    });
+
+    const diffNum = diffLabel === 'easy' ? 2 : diffLabel === 'hard' ? 4 : 3;
+    const aiQuestions = [];
+
+    for (const q of aiQs.slice(0, num_questions)) {
+      const qId = uuidv4();
+      await query(
+        `INSERT INTO questions
+           (question_id, concept_id, question_text, question_type, options,
+            correct_answer, explanation, difficulty, source, is_active)
+         VALUES (?, ?, ?, 'mcq', ?, ?, ?, ?, 'ai_generated', 1)`,
+        [qId, conceptId, q.question_text, JSON.stringify(q.options),
+         q.correct_answer, q.explanation || '', diffNum]
+      );
+      aiQuestions.push({
+        question_id:            qId,
+        question_text:          q.question_text,
+        question_type:          'mcq',
+        options:                q.options,
+        difficulty:             diffNum,
+        estimated_time_seconds: 60,
+        concept_name:           topicName || 'General',
+        topic_name:             topicName || 'General Aptitude',
+      });
     }
 
     const session_id = uuidv4();
     await query(
-      `INSERT INTO practice_sessions (session_id, student_id, question_ids, started_at, time_limit_minutes, status)
+      `INSERT INTO practice_sessions
+         (session_id, student_id, question_ids, started_at, time_limit_minutes, status)
        VALUES (?, ?, ?, NOW(), ?, 'in_progress')`,
-      [session_id, student_id, JSON.stringify(questions.rows.map(q => q.question_id)), time_limit || null]
+      [session_id, student_id,
+       JSON.stringify(aiQuestions.map(q => q.question_id)),
+       time_limit || null]
     );
 
     res.json({
       session_id,
-      questions: questions.rows,
-      total: questions.rows.length
+      questions:    aiQuestions,
+      total:        aiQuestions.length,
+      ai_generated: true,
     });
   } catch (err) {
     next(err);
@@ -695,16 +643,34 @@ const reportViolation = async (req, res, next) => {
 /** GET /student/reports */
 const getReports = async (req, res, next) => {
   try {
-    const reports = await query(
-      `SELECT ta.attempt_id, t.title, t.mode, ta.score, ta.total_marks,
-              ta.accuracy_percent, ta.time_taken_seconds, ta.submitted_at, ta.violations_count
+    const student_id = req.user.user_id;
+
+    // Formal test attempts
+    const testAttempts = await query(
+      `SELECT ta.attempt_id as id, t.title, 'test' as type,
+              ta.score, ta.total_marks, ta.accuracy_percent,
+              ta.time_taken_seconds, ta.submitted_at
        FROM test_attempts ta
        JOIN tests t ON t.test_id = ta.test_id
-       WHERE ta.student_id = ? AND ta.status = 'submitted'
-       ORDER BY ta.submitted_at DESC`,
-      [req.user.user_id]
+       WHERE ta.student_id = ? AND ta.status = 'submitted'`,
+      [student_id]
     );
-    res.json({ attempts: reports.rows });
+
+    // Practice sessions
+    const practiceSessions = await query(
+      `SELECT ps.session_id as id, 'Practice Session' as title, 'practice' as type,
+              ps.score, NULL as total_marks, ps.accuracy_percent,
+              NULL as time_taken_seconds, ps.submitted_at
+       FROM practice_sessions ps
+       WHERE ps.student_id = ? AND ps.status = 'completed'`,
+      [student_id]
+    );
+
+    // Merge and sort by date desc
+    const all = [...testAttempts.rows, ...practiceSessions.rows]
+      .sort((a, b) => new Date(b.submitted_at) - new Date(a.submitted_at));
+
+    res.json({ attempts: all });
   } catch (err) {
     next(err);
   }
@@ -713,14 +679,69 @@ const getReports = async (req, res, next) => {
 /** GET /student/reports/:id */
 const getReportById = async (req, res, next) => {
   try {
-    const { id: attempt_id } = req.params;
+    const { id } = req.params;
     const student_id = req.user.user_id;
 
+    // ── Try as practice session first ─────────────────────────────────────
+    const session = await query(
+      'SELECT * FROM practice_sessions WHERE session_id = ? AND student_id = ?',
+      [id, student_id]
+    );
+
+    if (session.rows.length > 0) {
+      const ps = session.rows[0];
+      const answers = await query(
+        `SELECT pa.question_id, pa.selected_answer, pa.is_correct, pa.time_taken_seconds,
+                q.question_text, q.options, q.correct_answer, q.explanation, q.difficulty,
+                COALESCE(top.name, 'General') as topic_name, COALESCE(c.name, 'General') as concept_name
+         FROM practice_answers pa
+         JOIN questions q ON q.question_id = pa.question_id
+         LEFT JOIN concepts c ON c.concept_id = q.concept_id
+         LEFT JOIN topics top ON top.topic_id = c.topic_id
+         WHERE pa.session_id = ?`,
+        [id]
+      );
+
+      const total = answers.rows.length;
+      const time_taken = answers.rows.reduce((s, a) => s + (a.time_taken_seconds || 0), 0);
+
+      const topicMap = {};
+      for (const a of answers.rows) {
+        if (!topicMap[a.topic_name]) topicMap[a.topic_name] = { correct: 0, total: 0 };
+        topicMap[a.topic_name].total++;
+        if (a.is_correct) topicMap[a.topic_name].correct++;
+      }
+      const topic_analysis = Object.entries(topicMap).map(([topic_name, v]) => ({
+        topic_name,
+        accuracy: v.total > 0 ? Math.round((v.correct / v.total) * 100) : 0,
+        correct: v.correct,
+        total: v.total,
+        is_weak: v.total > 0 && Math.round((v.correct / v.total) * 100) < 60,
+      })).sort((a, b) => a.accuracy - b.accuracy);
+
+      return res.json({
+        type: 'practice',
+        attempt: {
+          id,
+          title: 'Practice Session',
+          score: ps.score,
+          total_marks: total,
+          accuracy_percent: ps.accuracy_percent,
+          time_taken_seconds: time_taken,
+          submitted_at: ps.submitted_at,
+        },
+        answers: answers.rows,
+        topic_analysis,
+        weak_topics: topic_analysis.filter(t => t.is_weak),
+      });
+    }
+
+    // ── Fall back to test attempt ──────────────────────────────────────────
     const attempt = await query(
       `SELECT ta.*, t.title, t.marking_scheme, t.mode
        FROM test_attempts ta JOIN tests t ON t.test_id = ta.test_id
        WHERE ta.attempt_id = ? AND ta.student_id = ?`,
-      [attempt_id, student_id]
+      [id, student_id]
     );
 
     if (attempt.rows.length === 0) {
@@ -736,10 +757,9 @@ const getReportById = async (req, res, next) => {
        JOIN concepts c ON c.concept_id = q.concept_id
        JOIN topics top ON top.topic_id = c.topic_id
        WHERE aa.attempt_id = ?`,
-      [attempt_id]
+      [id]
     );
 
-    // Compute topic_analysis from answers
     const topicMap = {};
     for (const a of answers.rows) {
       if (!topicMap[a.topic_name]) topicMap[a.topic_name] = { correct: 0, total: 0 };
@@ -749,10 +769,18 @@ const getReportById = async (req, res, next) => {
     const topic_analysis = Object.entries(topicMap).map(([topic_name, v]) => ({
       topic_name,
       accuracy: v.total > 0 ? Math.round((v.correct / v.total) * 100) : 0,
+      correct: v.correct,
       total: v.total,
-    }));
+      is_weak: v.total > 0 && Math.round((v.correct / v.total) * 100) < 60,
+    })).sort((a, b) => a.accuracy - b.accuracy);
 
-    res.json({ attempt: attempt.rows[0], answers: answers.rows, topic_analysis });
+    res.json({
+      type: 'test',
+      attempt: attempt.rows[0],
+      answers: answers.rows,
+      topic_analysis,
+      weak_topics: topic_analysis.filter(t => t.is_weak),
+    });
   } catch (err) {
     next(err);
   }

@@ -43,7 +43,7 @@ export default function StudyMaterials() {
     <div className="p-6 max-w-6xl mx-auto">
       <h1 className="text-2xl font-bold text-gray-800 mb-6">Study Materials</h1>
 
-      <div className="flex gap-3 mb-6">
+      <div className="flex gap-3 mb-4">
         <div className="relative flex-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
@@ -53,17 +53,24 @@ export default function StudyMaterials() {
             placeholder="Search materials..."
           />
         </div>
-        <select
-          value={type}
-          onChange={e => { setType(e.target.value); setPage(1); }}
-          className="border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">All Types</option>
-          <option value="pdf">PDF</option>
-          <option value="video">Video</option>
-          <option value="note">Note</option>
-          <option value="past_paper">Past Paper</option>
-        </select>
+      </div>
+
+      <div className="flex gap-2 mb-6 flex-wrap">
+        {[
+          { label: 'All', value: '', color: 'bg-gray-800 text-white', inactive: 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50' },
+          { label: 'PDF', value: 'pdf', color: 'bg-red-600 text-white', inactive: 'bg-white text-red-600 border border-red-200 hover:bg-red-50' },
+          { label: 'Video', value: 'video', color: 'bg-blue-600 text-white', inactive: 'bg-white text-blue-600 border border-blue-200 hover:bg-blue-50' },
+          { label: 'Note', value: 'note', color: 'bg-yellow-500 text-white', inactive: 'bg-white text-yellow-600 border border-yellow-200 hover:bg-yellow-50' },
+          { label: 'Past Paper', value: 'past_paper', color: 'bg-purple-600 text-white', inactive: 'bg-white text-purple-600 border border-purple-200 hover:bg-purple-50' },
+        ].map(tab => (
+          <button
+            key={tab.value}
+            onClick={() => { setType(tab.value); setPage(1); }}
+            className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${type === tab.value ? tab.color : tab.inactive}`}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {loading ? (

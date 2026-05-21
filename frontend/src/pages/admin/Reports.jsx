@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../services/api';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { ChevronLeft, BarChart2 } from 'lucide-react';
+import { ChevronLeft, BarChart2, Users, TrendingUp, ClipboardList, Award } from 'lucide-react';
 
 const C = "bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl";
 
@@ -11,6 +11,13 @@ export default function AdminReports() {
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadingReport, setLoadingReport] = useState(false);
+  const [stats, setStats] = useState(null);
+
+  useEffect(() => {
+    api.get('/admin/dashboard')
+      .then(r => setStats(r.data))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     api.get('/admin/tests', { params: { status: 'completed' } })
@@ -121,6 +128,13 @@ export default function AdminReports() {
     );
   }
 
+  const cards = [
+    { label: 'Total Students', value: stats?.total_students ?? 0, icon: Users, grad: 'from-blue-500 to-indigo-600' },
+    { label: 'Active Today', value: stats?.active_today ?? 0, icon: TrendingUp, grad: 'from-emerald-500 to-teal-600' },
+    { label: 'Tests This Week', value: stats?.tests_this_week ?? 0, icon: ClipboardList, grad: 'from-violet-500 to-purple-600' },
+    { label: 'Avg Score', value: `${Math.round(stats?.avg_score ?? 0)}%`, icon: Award, grad: 'from-orange-500 to-amber-500' },
+  ];
+
   return (
     <div className="w-full min-h-full flex flex-col">
       {/* Hero */}
@@ -139,6 +153,18 @@ export default function AdminReports() {
 
       {/* Content */}
       <div className="flex-1 p-5 md:p-8">
+        {/* Stat cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          {cards.map(({ label, value, icon: Icon, grad }) => (
+            <div key={label} className={C + " p-4 shadow-sm"}>
+              <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${grad} flex items-center justify-center mb-3`}>
+                <Icon size={18} className="text-white" />
+              </div>
+              <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{value}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{label}</p>
+            </div>
+          ))}
+        </div>
         {loading ? (
           <div className="space-y-3">{[...Array(4)].map((_, i) => <div key={i} className="h-20 bg-gray-200 dark:bg-gray-800 animate-pulse rounded-2xl" />)}</div>
         ) : tests.length === 0 ? (

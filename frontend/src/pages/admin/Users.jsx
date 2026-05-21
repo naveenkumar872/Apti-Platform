@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { Plus, Search, UserCheck, UserX, Users as UsersIcon } from 'lucide-react';
+import { Plus, Search, UserCheck, UserX, Users as UsersIcon, TrendingUp, ClipboardList, Award } from 'lucide-react';
 
 const BRANCHES = ['Computer Science', 'Information Technology', 'Electronics', 'Mechanical', 'Civil', 'Electrical', 'Other'];
 const ROLES = ['student', 'teacher'];
@@ -119,6 +119,13 @@ export default function Users() {
   const [search, setSearch] = useState('');
   const [showUserModal, setShowUserModal] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
+  const [stats, setStats] = useState(null);
+
+  useEffect(() => {
+    api.get('/admin/dashboard')
+      .then(r => setStats(r.data))
+      .catch(() => {});
+  }, []);
 
   const fetchUsers = () => {
     setLoading(true);
@@ -149,6 +156,13 @@ export default function Users() {
     admin: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
   };
 
+  const cards = [
+    { label: 'Total Students', value: stats?.total_students ?? 0, icon: UsersIcon, grad: 'from-blue-500 to-indigo-600' },
+    { label: 'Active Today', value: stats?.active_today ?? 0, icon: TrendingUp, grad: 'from-emerald-500 to-teal-600' },
+    { label: 'Tests This Week', value: stats?.tests_this_week ?? 0, icon: ClipboardList, grad: 'from-violet-500 to-purple-600' },
+    { label: 'Avg Score', value: `${Math.round(stats?.avg_score ?? 0)}%`, icon: Award, grad: 'from-orange-500 to-amber-500' },
+  ];
+
   return (
     <div className="w-full min-h-full flex flex-col">
       {/* Hero */}
@@ -175,6 +189,18 @@ export default function Users() {
 
       {/* Content */}
       <div className="flex-1 p-5 md:p-8">
+        {/* Stat cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          {cards.map(({ label, value, icon: Icon, grad }) => (
+            <div key={label} className={C + " p-4 shadow-sm"}>
+              <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${grad} flex items-center justify-center mb-3`}>
+                <Icon size={18} className="text-white" />
+              </div>
+              <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{value}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{label}</p>
+            </div>
+          ))}
+        </div>
         {showUserModal && <UserModal onClose={() => setShowUserModal(false)} onSave={u => { setUsers(p => [u, ...p]); setShowUserModal(false); }} />}
         {showBatchModal && <BatchModal onClose={() => setShowBatchModal(false)} onSave={b => { setBatches(p => [b, ...p]); setShowBatchModal(false); }} />}
 

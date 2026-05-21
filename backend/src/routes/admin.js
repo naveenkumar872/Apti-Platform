@@ -11,6 +11,7 @@ router.use(authorize('admin', 'teacher'));
 router.get('/dashboard', adminController.getDashboard);
 
 // User Management (admin only)
+router.get('/users/stats', adminController.getUserStats);
 router.get('/users', authorize('admin'), adminController.getUsers);
 router.post('/users', authorize('admin'), adminController.createUser);
 router.put('/users/:id', authorize('admin'), adminController.updateUser);
@@ -31,6 +32,7 @@ router.delete('/tests/:id', adminController.deleteTest);
 router.post('/tests/ai-generate', adminController.aiGenerateQuestions);
 
 // Question Bank
+router.get('/questions/stats', adminController.getQuestionBankStats);
 router.get('/questions', adminController.getQuestions);
 router.post('/questions', adminController.createQuestion);
 router.put('/questions/:id', adminController.updateQuestion);
@@ -43,6 +45,7 @@ router.put('/materials/:id', adminController.updateMaterial);
 router.delete('/materials/:id', adminController.deleteMaterial);
 
 // Reports
+router.get('/reports/stats', adminController.getReportStats);
 router.get('/reports/tests/:id', adminController.getTestReport);
 router.get('/reports/students/:id', adminController.getStudentReport);
 

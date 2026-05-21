@@ -12,11 +12,18 @@ const getDashboard = async (req, res, next) => {
     ]);
 
     const topPerformers = await query(
-      `SELECT u.user_id, u.name, AVG(ta.accuracy_percent) as avg_accuracy
+      `SELECT u.user_id, u.name, AVG(ta.accuracy_percent) as avg_score, AVG(ta.accuracy_percent) as avg_accuracy
        FROM users u JOIN test_attempts ta ON ta.student_id = u.user_id
        WHERE ta.submitted_at > NOW() - INTERVAL 7 DAY AND ta.status='submitted'
        GROUP BY u.user_id, u.name
        ORDER BY avg_accuracy DESC LIMIT 10`
+    );
+
+    const recentViolations = await query(
+      `SELECT v.violation_id, v.violation_type, v.occurred_at, u.name as student_name
+       FROM violations v
+       JOIN users u ON u.user_id = v.student_id
+       ORDER BY v.occurred_at DESC LIMIT 5`
     );
 
     res.json({
@@ -26,7 +33,12 @@ const getDashboard = async (req, res, next) => {
         tests_this_week: parseInt(testsThisWeek.rows[0].count),
         avg_score_30d: parseFloat(avgScore.rows[0].avg_score) || 0,
       },
+      total_students: parseInt(students.rows[0].count),
+      active_today: parseInt(activeToday.rows[0].count),
+      tests_this_week: parseInt(testsThisWeek.rows[0].count),
+      avg_score: parseFloat(avgScore.rows[0].avg_score) || 0,
       top_performers: topPerformers.rows,
+      recent_violations: recentViolations.rows,
     });
   } catch (err) {
     next(err);
@@ -280,11 +292,15 @@ const deleteTest = async (req, res, next) => {
 /** POST /admin/tests/ai-generate */
 const aiGenerateQuestions = async (req, res, next) => {
   try {
-    const { topic, subject, num_questions = 5, difficulty = 'medium' } = req.body;
+    const { topic, subject, concept, num_questions = 5, difficulty = 'medium' } = req.body;
     const apiKey = process.env.SAMBANOVA_API_KEY;
 
     if (apiKey) {
-      const prompt = `Generate ${num_questions} multiple choice questions on the topic '${topic}' under '${subject}'. Difficulty: ${difficulty}. Return only a JSON array, no markdown. Each element: {"question":"...","options":["A. ...","B. ...","C. ...","D. ..."],"correct_index":0,"explanation":"...","difficulty":"${difficulty}","estimated_time_seconds":60}`;
+      let prompt = `Generate ${num_questions} multiple choice questions on the topic '${topic}' under '${subject}'.`;
+      if (concept) {
+        prompt = `Generate ${num_questions} multiple choice questions on the concept '${concept}' under the topic '${topic}' of subject '${subject}'.`;
+      }
+      prompt += ` Difficulty: ${difficulty}. Return only a JSON array, no markdown. Each element: {"question":"...","options":["A. ...","B. ...","C. ...","D. ..."],"correct_index":0,"explanation":"...","difficulty":"${difficulty}","estimated_time_seconds":60}`;
 
       const response = await fetch('https://api.sambanova.ai/v1/chat/completions', {
         method: 'POST',
@@ -323,7 +339,7 @@ const aiGenerateQuestions = async (req, res, next) => {
 
     // Demo response when no API key
     const demoQuestions = Array.from({ length: num_questions }, (_, i) => ({
-      question: `Sample question ${i + 1} on ${topic}: What is the correct answer?`,
+      question: `Sample question ${i + 1} on ${concept ? `${concept} (${topic})` : topic}: What is the correct answer?`,
       options: ['A. Option A', 'B. Option B', 'C. Option C', 'D. Option D'],
       correct_index: 0,
       correct_answer: 'A',
@@ -740,6 +756,63 @@ const logAudit = async (user_id, action, entity_type, entity_id) => {
   }
 };
 
+const getUserStats = async (req, res, next) => {
+  try {
+    const [st, te, ad, ba] = await Promise.all([
+      query("SELECT COUNT(*) as count FROM users WHERE role='student' AND is_active=1"),
+      query("SELECT COUNT(*) as count FROM users WHERE role='teacher' AND is_active=1"),
+      query("SELECT COUNT(*) as count FROM users WHERE role='admin' AND is_active=1"),
+      query("SELECT COUNT(*) as count FROM batches"),
+    ]);
+    res.json({
+      total_students: parseInt(st.rows[0].count) || 0,
+      total_teachers: parseInt(te.rows[0].count) || 0,
+      total_admins: parseInt(ad.rows[0].count) || 0,
+      total_batches: parseInt(ba.rows[0].count) || 0
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+const getQuestionBankStats = async (req, res, next) => {
+  try {
+    const [qCount, sCount, tCount, cCount] = await Promise.all([
+      query("SELECT COUNT(*) as count FROM questions WHERE is_active=1"),
+      query("SELECT COUNT(*) as count FROM subjects"),
+      query("SELECT COUNT(*) as count FROM topics"),
+      query("SELECT COUNT(*) as count FROM concepts"),
+    ]);
+    res.json({
+      total_questions: parseInt(qCount.rows[0].count) || 0,
+      total_subjects: parseInt(sCount.rows[0].count) || 0,
+      total_topics: parseInt(tCount.rows[0].count) || 0,
+      total_concepts: parseInt(cCount.rows[0].count) || 0
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+const getReportStats = async (req, res, next) => {
+  try {
+    const [co, ta, av, ma] = await Promise.all([
+      query("SELECT COUNT(*) as count FROM tests WHERE status='completed'"),
+      query("SELECT COUNT(*) as count FROM test_attempts WHERE status='submitted'"),
+      query("SELECT ROUND(AVG(accuracy_percent),2) as avg FROM test_attempts WHERE status='submitted'"),
+      query("SELECT ROUND(MAX(accuracy_percent),2) as max FROM test_attempts WHERE status='submitted'"),
+    ]);
+    res.json({
+      completed_tests: parseInt(co.rows[0].count) || 0,
+      total_attempts: parseInt(ta.rows[0].count) || 0,
+      avg_score: parseFloat(av.rows[0].avg) || 0,
+      max_score: parseFloat(ma.rows[0].max) || 0
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getDashboard, getUsers, createUser, updateUser, deleteUser,
   getBatches, createBatch, updateBatch, deleteBatch,
@@ -751,5 +824,5 @@ module.exports = {
   getViolations, createAnnouncement, getAnnouncements,
   getAllDoubts, answerDoubt,
   getSubjects, createSubject, getTopics, createTopic, getConcepts, createConcept,
-  getAuditLog
+  getAuditLog, getUserStats, getQuestionBankStats, getReportStats
 };

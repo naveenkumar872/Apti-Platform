@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { Plus, Search, Trash2, HelpCircle } from 'lucide-react';
+import { Plus, Search, Trash2, HelpCircle, Users, TrendingUp, ClipboardList, Award } from 'lucide-react';
 
 const C = "bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl";
 const inputCls = "w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-800 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500";
@@ -17,6 +17,13 @@ export default function QuestionBank() {
     explanation: '', estimated_time_seconds: 60,
   });
   const [saving, setSaving] = useState(false);
+  const [stats, setStats] = useState(null);
+
+  useEffect(() => {
+    api.get('/admin/dashboard')
+      .then(r => setStats(r.data))
+      .catch(() => {});
+  }, []);
 
   const fetchQuestions = () => {
     setLoading(true);
@@ -56,6 +63,13 @@ export default function QuestionBank() {
   const diffColors = ['', 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300', 'bg-lime-100 text-lime-700 dark:bg-lime-900/40 dark:text-lime-300', 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300', 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300', 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'];
   const diffLabels = ['', 'Easy', 'Easy-Med', 'Medium', 'Med-Hard', 'Hard'];
 
+  const cards = [
+    { label: 'Total Students', value: stats?.total_students ?? 0, icon: Users, grad: 'from-blue-500 to-indigo-600' },
+    { label: 'Active Today', value: stats?.active_today ?? 0, icon: TrendingUp, grad: 'from-emerald-500 to-teal-600' },
+    { label: 'Tests This Week', value: stats?.tests_this_week ?? 0, icon: ClipboardList, grad: 'from-violet-500 to-purple-600' },
+    { label: 'Avg Score', value: `${Math.round(stats?.avg_score ?? 0)}%`, icon: Award, grad: 'from-orange-500 to-amber-500' },
+  ];
+
   return (
     <div className="w-full min-h-full flex flex-col">
       {/* Hero */}
@@ -80,6 +94,18 @@ export default function QuestionBank() {
 
       {/* Content */}
       <div className="flex-1 p-5 md:p-8">
+        {/* Stat cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          {cards.map(({ label, value, icon: Icon, grad }) => (
+            <div key={label} className={C + " p-4 shadow-sm"}>
+              <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${grad} flex items-center justify-center mb-3`}>
+                <Icon size={18} className="text-white" />
+              </div>
+              <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{value}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{label}</p>
+            </div>
+          ))}
+        </div>
         {showForm && (
           <div className={C + " p-6 shadow-sm mb-6 space-y-4"}>
             <h2 className="font-semibold text-gray-800 dark:text-gray-100">New Question</h2>

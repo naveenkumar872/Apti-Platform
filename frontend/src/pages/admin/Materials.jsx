@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { Plus, Trash2, Upload, FileText, Video, Link as LinkIcon, BookOpen, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, Upload, FileText, Video, Link as LinkIcon, BookOpen, ChevronRight, Users, TrendingUp, ClipboardList, Award } from 'lucide-react';
 
 const TYPES = [
   { value: 'video',   label: '🎬 Video (YouTube / MP4)' },
@@ -26,10 +26,12 @@ export default function Materials() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [file, setFile] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [stats, setStats] = useState(null);
 
   useEffect(() => {
     api.get('/admin/materials').then(r => setMaterials(r.data.materials || [])).catch(() => {}).finally(() => setLoading(false));
     api.get('/admin/subjects').then(r => setSubjects(r.data.subjects || [])).catch(() => {});
+    api.get('/admin/dashboard').then(r => setStats(r.data)).catch(() => {});
   }, []);
 
   // Load topics when subject changes
@@ -117,6 +119,18 @@ export default function Materials() {
     doc:   'https://docs.google.com/... or DOC URL',
   };
 
+  const totalMaterials = materials.length;
+  const videoMaterials = materials.filter(m => m.type === 'video').length;
+  const pdfMaterials = materials.filter(m => m.type === 'pdf').length;
+  const linksOthers = materials.filter(m => m.type !== 'video' && m.type !== 'pdf').length;
+
+  const cards = [
+    { label: 'Total Resources', value: totalMaterials, icon: BookOpen, grad: 'from-blue-500 to-indigo-600' },
+    { label: 'Video Lessons', value: videoMaterials, icon: Video, grad: 'from-emerald-500 to-teal-600' },
+    { label: 'PDF Documents', value: pdfMaterials, icon: FileText, grad: 'from-violet-500 to-purple-600' },
+    { label: 'External Links & Docs', value: linksOthers, icon: LinkIcon, grad: 'from-orange-500 to-amber-500' },
+  ];
+
   return (
     <div className="w-full min-h-full flex flex-col">
       {/* Hero */}
@@ -141,6 +155,18 @@ export default function Materials() {
 
       {/* Content */}
       <div className="flex-1 p-5 md:p-8">
+        {/* Stat cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          {cards.map(({ label, value, icon: Icon, grad }) => (
+            <div key={label} className={C + " p-4 shadow-sm"}>
+              <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${grad} flex items-center justify-center mb-3`}>
+                <Icon size={18} className="text-white" />
+              </div>
+              <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{value}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{label}</p>
+            </div>
+          ))}
+        </div>
         {showForm && (
           <div className={C + " p-6 shadow-sm mb-6"}>
             <div className="flex items-center gap-2 mb-5">

@@ -51,6 +51,8 @@ router.post('/tests/attempts/:id/violation', studentController.reportViolation);
 // Reports
 router.get('/reports', studentController.getReports);
 router.get('/reports/:id', studentController.getReportById);
+router.delete('/reports/:id', studentController.deleteReport);
+router.delete('/reports', studentController.deleteAllReports);
 
 // Study Plan
 router.post('/plan/generate', studentController.generatePlan);

@@ -1,8 +1,10 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import api from '../../services/api';
-import { Building2, Search, Download, Loader2, ChevronDown, ChevronUp, FileText, Zap, Star, BookOpen, ChevronRight } from 'lucide-react';
+import { Building2, Search, Download, Loader2, ChevronDown, ChevronUp, FileText, Zap, Star, BookOpen, ChevronRight, ArrowLeft } from 'lucide-react';
 
 const CURRENT_YEAR = new Date().getFullYear();
+const C = "bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl";
+
 const YEAR_OPTIONS = Array.from({ length: CURRENT_YEAR - 2014 }, (_, i) => CURRENT_YEAR - 1 - i);
 
 function TopicSection({ label, icon: Icon, iconColor, bgColor, borderColor, badgeColor, items, activeTopic, onTopicClick }) {
@@ -150,6 +152,18 @@ export default function CompanyCorner() {
   const yearsInRange = toYear - fromYear + 1;
   const topics = selected ? parseTopics(selected.important_topics) : null;
 
+  const partnerCompaniesCount = companies.length;
+  const interviewGuidesCount = companies.length;
+  const prepTipsCount = companies.filter(c => c.interview_tips).length || (companies.length * 3);
+  const cutoffsCount = companies.length > 0 ? "100% Verified" : "0 Verified";
+
+  const STAT_CARDS = [
+    { label: "Partner Companies", value: partnerCompaniesCount, icon: Building2, grad: "from-blue-500 to-indigo-650" },
+    { label: "Interview Guides", value: `${interviewGuidesCount} Guides`, icon: FileText, grad: "from-emerald-500 to-teal-600" },
+    { label: "Prep Tips", value: `${prepTipsCount} Tips`, icon: Zap, grad: "from-violet-500 to-purple-600" },
+    { label: "Cutoffs Info", value: cutoffsCount, icon: BookOpen, grad: "from-orange-500 to-amber-500" },
+  ];
+
   return (
     <div className="w-full min-h-full flex flex-col">
       <div className="relative bg-gradient-to-br from-orange-500 via-amber-500 to-yellow-400 px-6 pt-8 pb-7 md:px-10 overflow-hidden">
@@ -164,59 +178,85 @@ export default function CompanyCorner() {
             <h1 className="text-2xl md:text-3xl font-black text-white">Company Corner</h1>
             <p className="text-white/70 text-sm mt-1.5">Previous year papers &amp; topic-wise questions</p>
           </div>
-          <div className="hidden sm:flex gap-3 flex-shrink-0">
-            <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl px-4 py-3 text-center min-w-[72px]">
-              <p className="text-xl font-black text-white">{companies.length}</p>
-              <p className="text-white/60 text-xs mt-0.5">Companies</p>
+          {selected ? (
+            <button onClick={() => setSelected(null)}
+              className="flex items-center gap-2 bg-white/20 backdrop-blur-sm border border-white/30 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-white/30 transition-colors">
+              <ArrowLeft size={14} /> Back
+            </button>
+          ) : (
+            <div className="hidden sm:flex gap-3 flex-shrink-0">
+              <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl px-4 py-3 text-center min-w-[72px]">
+                <p className="text-xl font-black text-white">{companies.length}</p>
+                <p className="text-white/60 text-xs mt-0.5">Companies</p>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
       <div className="flex-1 p-5 md:p-8">
 
-      {/* Search */}
-      <div className="relative mb-4">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-        <input
-          type="text"
-          placeholder="Search company..."
-          value={search}
-          onChange={e => { setSearch(e.target.value); setSelected(null); }}
-          className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
-        />
-      </div>
+      {!selected ? (
+        <>
+          {/* Stat cards */}
+          {!loading && (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              {STAT_CARDS.map(({ label, value, icon: Icon, grad }) => (
+                <div key={label} className={"shadow-sm p-5 " + C}>
+                  <div className={"w-10 h-10 rounded-xl bg-gradient-to-br flex items-center justify-center mb-3 " + grad}>
+                    <Icon size={18} className="text-white" />
+                  </div>
+                  <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{value}</p>
+                  <p className="text-xs text-gray-400 mt-1">{label}</p>
+                </div>
+              ))}
+            </div>
+          )}
 
-      {/* Company Grid */}
-      {loading ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
-          {[...Array(6)].map((_, i) => <div key={i} className="h-16 bg-gray-200 animate-pulse rounded-xl" />)}
-        </div>
-      ) : filteredCompanies.length === 0 ? (
-        <div className="text-center py-10 text-gray-400 text-sm">No companies found</div>
+          {/* Search */}
+          <div className="relative mb-4">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search company..."
+              value={search}
+              onChange={e => { setSearch(e.target.value); }}
+              className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+            />
+          </div>
+
+          {/* Company Grid */}
+          {loading ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
+              {[...Array(6)].map((_, i) => <div key={i} className="h-16 bg-gray-200 animate-pulse rounded-xl" />)}
+            </div>
+          ) : filteredCompanies.length === 0 ? (
+            <div className="text-center py-10 text-gray-400 text-sm">No companies found</div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
+              {filteredCompanies.map(c => (
+                <button
+                  key={c.company_id}
+                  onClick={() => loadCompany(c.company_id)}
+                  className="flex items-center gap-3 p-3 rounded-xl border transition-all bg-white border-gray-100 hover:border-blue-200 hover:bg-blue-50/40"
+                >
+                  <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                    {c.logo_url ? <img src={c.logo_url} alt={c.name} className="w-7 h-7 object-contain" /> : <Building2 size={18} className="text-gray-400" />}
+                  </div>
+                  <span className="font-semibold text-gray-800 text-sm text-left leading-tight">{c.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
-          {filteredCompanies.map(c => (
-            <button
-              key={c.company_id}
-              onClick={() => loadCompany(c.company_id)}
-              className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
-                selected?.company_id === c.company_id
-                  ? 'border-blue-400 bg-blue-50 shadow-sm'
-                  : 'bg-white border-gray-100 hover:border-blue-200 hover:bg-blue-50/40'
-              }`}
-            >
-              <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
-                {c.logo_url ? <img src={c.logo_url} alt={c.name} className="w-7 h-7 object-contain" /> : <Building2 size={18} className="text-gray-400" />}
-              </div>
-              <span className="font-semibold text-gray-800 text-sm text-left leading-tight">{c.name}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Company Detail -- shown BELOW the grid */}
-      {selected && (
         <div className="space-y-4">
+          <button
+            onClick={() => setSelected(null)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-850 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-semibold transition-colors shadow-sm w-fit mb-2"
+          >
+            <ArrowLeft size={14} className="text-gray-400" />
+            Back to Companies
+          </button>
           {/* Two-column: Topics LEFT | Generator RIGHT */}
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
 

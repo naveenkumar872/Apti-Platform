@@ -1,7 +1,7 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import api from "../../services/api";
 import useAuthStore from "../../stores/authStore";
-import { Trophy, Medal, Star } from "lucide-react";
+import { Trophy, Medal, Star, Users, Award } from "lucide-react";
 
 const C = "bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800";
 
@@ -16,6 +16,19 @@ export default function Leaderboard() {
 
   const top3Grads = ["from-yellow-400 to-amber-500", "from-gray-300 to-gray-400", "from-orange-400 to-amber-600"];
   const top3Icons = ["text-yellow-500", "text-gray-400", "text-amber-600"];
+
+  const myRankIndex = data.findIndex(e => e.user_id === user?.user_id);
+  const myRank = myRankIndex !== -1 ? `#${myRankIndex + 1}` : "N/A";
+  const totalRankers = data.length;
+  const peakAccuracy = data.length > 0 ? `${Math.round(Math.max(...data.map(e => e.avg_accuracy || 0)))}%` : "N/A";
+  const topScore = data.length > 0 ? `${Math.round(data[0].avg_accuracy || 0)}%` : "N/A";
+
+  const STAT_CARDS = [
+    { label: "My Rank", value: myRank, icon: Award, grad: "from-blue-500 to-indigo-650" },
+    { label: "Total Rankers", value: totalRankers, icon: Users, grad: "from-emerald-500 to-teal-600" },
+    { label: "Peak Accuracy", value: peakAccuracy, icon: Star, grad: "from-violet-500 to-purple-600" },
+    { label: "Top Score", value: topScore, icon: Trophy, grad: "from-orange-500 to-amber-500" },
+  ];
 
   return (
     <div className="w-full min-h-full flex flex-col">
@@ -32,6 +45,21 @@ export default function Leaderboard() {
         </div>
       </div>
       <div className="flex-1 p-5 md:p-8">
+
+      {/* Stat cards */}
+      {!loading && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          {STAT_CARDS.map(({ label, value, icon: Icon, grad }) => (
+            <div key={label} className={"shadow-sm p-5 rounded-2xl " + C}>
+              <div className={"w-10 h-10 rounded-xl bg-gradient-to-br flex items-center justify-center mb-3 " + grad}>
+                <Icon size={18} className="text-white" />
+              </div>
+              <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{value}</p>
+              <p className="text-xs text-gray-400 mt-1">{label}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Top 3 podium */}
       {!loading && data.length >= 3 && (

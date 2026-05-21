@@ -1,6 +1,6 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import api from "../../services/api";
-import { MessageCircleQuestion, Plus, ChevronDown, ChevronUp, Send } from "lucide-react";
+import { MessageCircleQuestion, Plus, ChevronDown, ChevronUp, Send, HelpCircle, CheckCircle2, MessageSquare } from "lucide-react";
 
 const C = "bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800";
 const STATUS = { open: "bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400", answered: "bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-400" };
@@ -63,6 +63,18 @@ export default function Doubts() {
     api.get("/student/doubts").then(r => setDoubts(r.data.doubts || [])).catch(() => {}).finally(() => setLoading(false));
   };
 
+  const totalDoubts = doubts.length;
+  const answeredDoubts = doubts.filter(d => d.status === "answered" || d.status === "resolved").length;
+  const openDoubts = totalDoubts - answeredDoubts;
+  const resolutionRate = totalDoubts > 0 ? `${Math.round((answeredDoubts / totalDoubts) * 100)}%` : "0%";
+
+  const STAT_CARDS = [
+    { label: "Community Doubts", value: totalDoubts, icon: HelpCircle, grad: "from-blue-500 to-indigo-650" },
+    { label: "Answered Doubts", value: answeredDoubts, icon: CheckCircle2, grad: "from-emerald-500 to-teal-600" },
+    { label: "Open Doubts", value: openDoubts, icon: MessageCircleQuestion, grad: "from-orange-500 to-amber-500" },
+    { label: "Resolution Rate", value: resolutionRate, icon: MessageSquare, grad: "from-violet-500 to-purple-600" },
+  ];
+
   useEffect(() => { load(); }, []);
 
   const post = async () => {
@@ -97,6 +109,21 @@ export default function Doubts() {
         </div>
       </div>
       <div className="flex-1 p-5 md:p-8">
+
+      {/* Stat cards */}
+      {!loading && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          {STAT_CARDS.map(({ label, value, icon: Icon, grad }) => (
+            <div key={label} className={"shadow-sm p-5 rounded-2xl " + C}>
+              <div className={"w-10 h-10 rounded-xl bg-gradient-to-br flex items-center justify-center mb-3 " + grad}>
+                <Icon size={18} className="text-white" />
+              </div>
+              <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{value}</p>
+              <p className="text-xs text-gray-400 mt-1">{label}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
       {showForm && (
         <div className={"rounded-2xl border p-5 mb-5 " + C}>

@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import api from "../../services/api";
 import toast from "react-hot-toast";
 import {
@@ -855,6 +855,8 @@ function ResultView({ result, sessionTitle, onRestart }) {
    MAIN COMPONENT
 ═══════════════════════════════════════════ */
 export default function Practice() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [method,     setMethod]     = useState("topic");
   const [view,       setView]       = useState("home");
   const [session,    setSession]    = useState(null);
@@ -921,6 +923,34 @@ export default function Practice() {
     }
     setLoading(false); setAiStep(-1);
   };
+
+  useEffect(() => {
+    if (location.state?.retakePractice) {
+      const rp = location.state.retakePractice;
+      // Clear route state first to avoid loop
+      navigate(location.pathname, { replace: true, state: null });
+
+      let cfgParsed = {};
+      if (rp.config) {
+        cfgParsed = typeof rp.config === "string" ? JSON.parse(rp.config) : rp.config;
+      }
+      const count = parseInt(cfgParsed.count || cfgParsed.num_questions) || 10;
+      const difficulty = cfgParsed.difficulty || "mixed";
+      
+      const payload = {
+        topic_ids: cfgParsed.topic_ids || (cfgParsed.topic_id ? [cfgParsed.topic_id] : []),
+        concept_ids: cfgParsed.concept_ids || [],
+        num_questions: count,
+        difficulty: difficulty,
+        title: rp.title,
+        method: rp.method || "topic",
+        config: cfgParsed,
+        task_id: cfgParsed.task_id || null
+      };
+      
+      handleStart(payload);
+    }
+  }, [location, navigate]);
 
   const handleEnd = useCallback((data) => {
     setResult(data);
@@ -1029,9 +1059,10 @@ export default function Practice() {
       <div className="relative bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 px-6 py-5 md:px-10 overflow-hidden">
         <div className="absolute inset-0 bg-black/10" />
         <div className="relative flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-white/20 border border-white/30 flex items-center justify-center flex-shrink-0">
-            <Zap size={18} className="text-white" />
-          </div>
+          <button onClick={handleRestart}
+            className="p-2 rounded-xl bg-white/15 border border-white/25 text-white hover:bg-white/25 transition-colors flex-shrink-0">
+            <ArrowLeft size={16} />
+          </button>
           <div>
             <h1 className="text-lg font-bold text-white">Session Results</h1>
             <p className="text-white/60 text-xs">Review your performance below</p>
@@ -1044,10 +1075,20 @@ export default function Practice() {
     </div>
   );
 
-  /* ── Home ── */
   const avgScore = sessions.length > 0
     ? Math.round(sessions.reduce((a, s) => a + (parseFloat(s.accuracy_percent) || 0), 0) / sessions.length)
     : null;
+
+  const completedSessions = sessions.filter(s => s.status === "completed").length;
+  const inProgressSessions = sessions.filter(s => s.status === "in_progress").length;
+  const questionsAttempted = sessions.reduce((acc, s) => acc + (s.total_questions || 0), 0);
+
+  const STAT_CARDS = [
+    { label: "Sessions Completed", value: completedSessions, icon: CheckCircle2, grad: "from-emerald-500 to-teal-600" },
+    { label: "Average Accuracy", value: avgScore !== null ? `${avgScore}%` : "0%", icon: Target, grad: "from-blue-500 to-indigo-600" },
+    { label: "Questions Attempted", value: questionsAttempted, icon: BookOpen, grad: "from-violet-500 to-purple-600" },
+    { label: "In-Progress Sessions", value: inProgressSessions, icon: Clock, grad: "from-orange-500 to-amber-500" },
+  ];
 
   return (
     <div className="w-full min-h-full flex flex-col">
@@ -1085,6 +1126,19 @@ export default function Practice() {
           <GeneratingOverlay steps={AI_STEPS} step={aiStep} />
         ) : (
           <>
+            {/* Stat cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {STAT_CARDS.map(({ label, value, icon: Icon, grad }) => (
+                <div key={label} className={"shadow-sm p-5 " + C}>
+                  <div className={"w-10 h-10 rounded-xl bg-gradient-to-br flex items-center justify-center mb-3 " + grad}>
+                    <Icon size={18} className="text-white" />
+                  </div>
+                  <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{value}</p>
+                  <p className="text-xs text-gray-400 mt-1">{label}</p>
+                </div>
+              ))}
+            </div>
+
             <div className={"rounded-2xl shadow-sm p-6 " + C}>
               <div className="flex gap-1 bg-gray-100 dark:bg-gray-800/80 p-1.5 rounded-xl w-full mb-5">
                 {[

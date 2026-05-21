@@ -1,6 +1,7 @@
-﻿import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import api from "../../services/api";
-import { ClipboardList, Clock, Maximize2, AlertTriangle, ChevronLeft, ChevronRight, CheckCircle2 } from "lucide-react";
+import { ClipboardList, Clock, Maximize2, AlertTriangle, ChevronLeft, ChevronRight, CheckCircle2, BookOpen, Zap } from "lucide-react";
 
 const C = "bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800";
 
@@ -179,10 +180,8 @@ export default function Tests() {
   const [attempt, setAttempt] = useState(null);
   const [result, setResult] = useState(null);
   const [starting, setStarting] = useState(null);
-
-  useEffect(() => {
-    api.get("/student/tests").then(r => setTests(r.data.tests || [])).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const start = async (test) => {
     setStarting(test.test_id);
@@ -193,6 +192,24 @@ export default function Tests() {
     } catch {}
     setStarting(null);
   };
+
+  useEffect(() => {
+    api.get("/student/tests")
+      .then(r => {
+        const fetchedTests = r.data.tests || [];
+        setTests(fetchedTests);
+        if (location.state?.retakeTestId) {
+          const targetTestId = location.state.retakeTestId;
+          navigate(location.pathname, { replace: true, state: null });
+          const found = fetchedTests.find(t => t.test_id === targetTestId);
+          if (found) {
+            start(found);
+          }
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [location, navigate]);
 
   if (result) return (
     <div className="w-full min-h-full flex flex-col">
@@ -227,6 +244,18 @@ export default function Tests() {
     </div>
   );
 
+  const availableTests = tests.length;
+  const practiceMode = tests.filter(t => t.mode === "practice").length;
+  const testMode = tests.filter(t => t.mode === "test").length;
+  const liveAssessments = tests.filter(t => t.status === "live").length;
+
+  const STAT_CARDS = [
+    { label: "Available Tests", value: availableTests, icon: ClipboardList, grad: "from-blue-500 to-indigo-600" },
+    { label: "Practice Mode", value: practiceMode, icon: BookOpen, grad: "from-emerald-500 to-teal-600" },
+    { label: "Test Mode", value: testMode, icon: Clock, grad: "from-violet-500 to-purple-600" },
+    { label: "Live Assessments", value: liveAssessments, icon: Zap, grad: "from-orange-500 to-amber-500" },
+  ];
+
   return (
     <div className="w-full min-h-full flex flex-col">
       <div className="relative bg-gradient-to-br from-violet-600 via-indigo-600 to-blue-600 px-6 pt-8 pb-7 md:px-10 overflow-hidden">
@@ -251,7 +280,22 @@ export default function Tests() {
       </div>
       <div className="flex-1 p-5 md:p-8">
 
-      {loading ? (
+        {/* Stat cards */}
+        {!loading && (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            {STAT_CARDS.map(({ label, value, icon: Icon, grad }) => (
+              <div key={label} className={"shadow-sm p-5 " + C}>
+                <div className={"w-10 h-10 rounded-xl bg-gradient-to-br flex items-center justify-center mb-3 " + grad}>
+                  <Icon size={18} className="text-white" />
+                </div>
+                <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{value}</p>
+                <p className="text-xs text-gray-400 mt-1">{label}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {loading ? (
         <div className="space-y-3">{[...Array(4)].map((_, i) => <div key={i} className="h-20 bg-gray-200 dark:bg-gray-800 animate-pulse rounded-2xl" />)}</div>
       ) : tests.length === 0 ? (
         <div className={"rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700 p-14 text-center " + C}>
@@ -272,9 +316,20 @@ export default function Tests() {
                   <span className="text-xs text-gray-400 flex items-center gap-1"><Clock size={10} />{t.duration_minutes} min</span>
                   <span className="text-xs text-gray-400">{t.total_questions || t.question_count || "?"} questions</span>
                   {t.status === "completed" && <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Completed</span>}
+                  {t.attempt_count > 0 && (
+                    <span className="text-xs font-semibold text-purple-600 dark:text-purple-400">
+                      Attempted {t.attempt_count}x
+                    </span>
+                  )}
                 </div>
               </div>
-              {t.status !== "completed" && (
+              {t.attempt_status === "submitted" || t.status === "completed" ? (
+                <button onClick={() => start(t)} disabled={starting === t.test_id}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-bold hover:opacity-90 transition-opacity flex-shrink-0 disabled:opacity-60">
+                  <Maximize2 size={12} />
+                  {starting === t.test_id ? "Starting..." : "Retake"}
+                </button>
+              ) : (
                 <button onClick={() => start(t)} disabled={starting === t.test_id}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-xs font-bold hover:opacity-90 transition-opacity flex-shrink-0 disabled:opacity-60">
                   <Maximize2 size={12} />

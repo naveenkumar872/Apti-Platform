@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import api from "../../services/api";
 import toast from "react-hot-toast";
 import {
@@ -40,6 +40,44 @@ function PdfModal({ url, title, onClose }) {
           </div>
         </div>
         <iframe src={url} className="flex-1 w-full" title={title} />
+      </div>
+    </div>
+  );
+}
+
+/* -- Delete Confirmation Modal -- */
+function DeleteConfirmModal({ title, count, onClose, onConfirm }) {
+  const isMultiple = count > 1;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
+        <div className="mx-auto w-12 h-12 rounded-full bg-red-50 dark:bg-red-950/40 text-red-500 flex items-center justify-center mb-4">
+          <Trash2 size={22} />
+        </div>
+        <h3 className="text-base font-bold text-gray-800 dark:text-gray-100 mb-1">
+          {isMultiple ? "Delete Topics" : "Delete Study Content"}
+        </h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-5 leading-relaxed">
+          {isMultiple ? (
+            <span>Are you sure you want to delete the <strong>{count}</strong> selected topics and all their materials? This cannot be undone.</span>
+          ) : (
+            <span>Are you sure you want to delete <strong>{title}</strong> and all its materials? This cannot be undone.</span>
+          )}
+        </p>
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 font-semibold py-2.5 rounded-xl text-xs transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold py-2.5 rounded-xl text-xs transition-colors shadow-sm"
+          >
+            Delete
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -186,7 +224,7 @@ function GeneratedView({ item, palette, onMaterialsUpdate, onRegenerate, regener
             <p className="text-white/60 text-xs font-bold uppercase tracking-widest mb-1">Study Materials</p>
             <h2 className="text-xl font-bold">{context.conceptName || context.topicName}</h2>
             <p className="text-white/60 text-sm mt-0.5">
-              {context.subjectName}{context.conceptName ? ` â€º ${context.topicName}` : ""}
+              {context.subjectName}{context.conceptName ? ` › ${context.topicName}` : ""}
             </p>
           </div>
           <button onClick={onRegenerate} disabled={regenerating}
@@ -211,7 +249,7 @@ function GeneratedView({ item, palette, onMaterialsUpdate, onRegenerate, regener
         {videos.length === 0 ? (
           <div className="rounded-2xl border-2 border-dashed border-red-200 dark:border-red-900 p-10 text-center">
             <PlayCircle size={28} className="text-red-300 mx-auto mb-2" />
-            <p className="text-sm text-red-400">No videos â€” try regenerating.</p>
+            <p className="text-sm text-red-400">No videos — try regenerating.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -270,28 +308,67 @@ function GeneratedView({ item, palette, onMaterialsUpdate, onRegenerate, regener
 }
 
 /* -- History topic pill/card -- */
-function HistoryCard({ item, active, onClick }) {
+function HistoryCard({ item, active, onView, onDelete, deleting, selectMode, selected, onToggleSelect }) {
   const palette = pal(item.paletteIdx);
   return (
-    <button onClick={onClick}
-      className={"w-full text-left rounded-2xl p-4 border-2 transition-all hover:-translate-y-0.5 " +
-        (active
-          ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40 shadow-md"
-          : "border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-600 shadow-sm")}>
-      <span className={"inline-flex items-center text-xs font-bold px-2.5 py-0.5 rounded-full mb-2 text-white bg-gradient-to-r " + palette.grad}>
-        {item.context.subjectName}
-      </span>
-      <p className="font-bold text-gray-800 dark:text-gray-100 text-sm leading-tight">
-        {item.context.conceptName || item.context.topicName}
-      </p>
-      {item.context.conceptName && (
-        <p className="text-xs text-gray-400 mt-0.5">{item.context.topicName}</p>
-      )}
-      <div className="flex items-center gap-2 mt-2.5">
-        <span className="text-xs text-gray-400">{item.materials.length} resource{item.materials.length !== 1 ? "s" : ""}</span>
-        {active && <span className="text-xs font-semibold text-indigo-500 ml-auto">Viewing ?</span>}
+    <div
+      onClick={selectMode ? onToggleSelect : onView}
+      className={"w-full text-left rounded-2xl p-4 border-2 transition-all flex flex-col justify-between h-full cursor-pointer relative " +
+        (selected
+          ? "border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/20 shadow-md ring-2 ring-indigo-500/20"
+          : active
+            ? "border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/20 shadow-md"
+            : "border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-gray-200 dark:hover:border-gray-700 shadow-sm")}
+    >
+      <div>
+        <div className="flex items-start justify-between gap-2">
+          <span className={"inline-flex items-center text-[10px] font-bold px-2.5 py-0.5 rounded-full mb-2 text-white bg-gradient-to-r " + palette.grad}>
+            {item.context.subjectName}
+          </span>
+          {selectMode && (
+            <div className="flex-shrink-0">
+              {selected ? (
+                <CheckSquare size={17} className="text-indigo-500" />
+              ) : (
+                <Square size={17} className="text-gray-300 dark:text-gray-600" />
+              )}
+            </div>
+          )}
+        </div>
+        <p className="font-bold text-gray-800 dark:text-gray-100 text-sm leading-tight line-clamp-2">
+          {item.context.conceptName || item.context.topicName}
+        </p>
+        {item.context.conceptName && (
+          <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">{item.context.topicName}</p>
+        )}
       </div>
-    </button>
+      <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-gray-100 dark:border-gray-800">
+        <span className="text-xs text-gray-400 flex-shrink-0">
+          {item.materials.length} resource{item.materials.length !== 1 ? "s" : ""}
+        </span>
+        {!selectMode && (
+          <div className="flex items-center gap-1.5 flex-shrink-0" onClick={e => e.stopPropagation()}>
+            <button
+              onClick={onView}
+              className={"px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all " +
+                (active
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200")}
+            >
+              {active ? "Viewing" : "View"}
+            </button>
+            <button
+              onClick={onDelete}
+              disabled={deleting}
+              title="Delete this topic card"
+              className="p-1 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors disabled:opacity-40"
+            >
+              {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -313,6 +390,11 @@ export default function StudyMaterials() {
   const [activeKey,        setActiveKey]        = useState(null);
   const [generating,       setGenerating]       = useState(false);
   const [regeneratingKey,  setRegeneratingKey]  = useState(null);
+  const [historyLoading,   setHistoryLoading]   = useState(false);
+  const [deletingKey,      setDeletingKey]      = useState(null);
+  const [deleteConfirm,    setDeleteConfirm]    = useState(null);
+  const [selectMode,       setSelectMode]       = useState(false);
+  const [selectedKeys,     setSelectedKeys]     = useState(new Set());
 
   const [notes,        setNotes]        = useState([]);
   const [notesLoading, setNotesLoading] = useState(false);
@@ -357,11 +439,130 @@ export default function StudyMaterials() {
       .finally(() => setNotesLoading(false));
   }, [tab]);
 
+  useEffect(() => {
+    if (tab !== "materials") return;
+    setHistoryLoading(true);
+    api.get("/student/materials", { params: { limit: 1000 } })
+      .then(r => {
+        const list = r.data.materials || [];
+        const studyMats = list.filter(m => m.type !== "note");
+        const groups = {};
+        studyMats.forEach(m => {
+          if (!m.topic_id) return;
+          const key = `${m.topic_id}_${m.concept_id || "all"}`;
+          if (!groups[key]) {
+            const subjectIdx = SUBJECTS.findIndex(s => s.subject_id === m.subject_id);
+            groups[key] = {
+              key,
+              context: {
+                subjectName: m.subject_name || "",
+                topicName: m.topic_name || "",
+                conceptName: m.concept_name || "",
+                subject_id: m.subject_id,
+                topic_id: m.topic_id,
+                concept_id: m.concept_id || "",
+              },
+              materials: [],
+              paletteIdx: subjectIdx < 0 ? 0 : subjectIdx,
+            };
+          }
+          groups[key].materials.push(m);
+        });
+
+        const historyArray = Object.values(groups).map(g => {
+          const maxCreatedAt = Math.max(...g.materials.map(m => new Date(m.created_at || 0).getTime()));
+          return { ...g, maxCreatedAt };
+        }).sort((a, b) => b.maxCreatedAt - a.maxCreatedAt);
+
+        setGeneratedHistory(historyArray);
+      })
+      .catch(() => toast.error("Failed to load study materials history"))
+      .finally(() => setHistoryLoading(false));
+  }, [tab]);
+
   const handleMaterialsUpdate = useCallback((key, newMats) => {
     setGeneratedHistory(prev =>
       prev.map(item => item.key === key ? { ...item, materials: newMats } : item)
     );
   }, []);
+
+  const handleDeleteCard = (key) => {
+    const card = generatedHistory.find(h => h.key === key);
+    if (!card) return;
+    setDeleteConfirm({ keys: [key], title: card.context.conceptName || card.context.topicName });
+  };
+
+  const executeDeleteCard = async () => {
+    if (!deleteConfirm) return;
+    const { keys } = deleteConfirm;
+    setDeleteConfirm(null);
+
+    if (keys.length === 1) {
+      const key = keys[0];
+      const card = generatedHistory.find(h => h.key === key);
+      if (!card) return;
+
+      setDeletingKey(key);
+      try {
+        await Promise.all(card.materials.map(m =>
+          api.delete(`/student/materials/${m.material_id}`)
+        ));
+        setGeneratedHistory(prev => prev.filter(h => h.key !== key));
+        setSelectedKeys(prev => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+        if (activeKey === key) {
+          setActiveKey(null);
+        }
+        toast.success("Study materials deleted");
+      } catch {
+        toast.error("Failed to delete some materials");
+      } finally {
+        setDeletingKey(null);
+      }
+    } else {
+      setHistoryLoading(true);
+      try {
+        const cards = generatedHistory.filter(h => keys.includes(h.key));
+        const allMaterialIds = cards.flatMap(c => c.materials.map(m => m.material_id));
+        await Promise.all(allMaterialIds.map(mid => api.delete(`/student/materials/${mid}`)));
+
+        setGeneratedHistory(prev => prev.filter(h => !keys.includes(h.key)));
+        setSelectedKeys(new Set());
+        setSelectMode(false);
+        if (keys.includes(activeKey)) {
+          setActiveKey(null);
+        }
+        toast.success(`${keys.length} topics deleted`);
+      } catch {
+        toast.error("Failed to delete some study materials");
+      } finally {
+        setHistoryLoading(false);
+      }
+    }
+  };
+
+  const handleToggleSelectKey = (key) => {
+    setSelectedKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllKeys = () => {
+    if (selectedKeys.size === generatedHistory.length) {
+      setSelectedKeys(new Set());
+    } else {
+      setSelectedKeys(new Set(generatedHistory.map(h => h.key)));
+    }
+  };
 
   const doGenerate = async (forceNew = false, targetKey = null) => {
     if (!selSubject || !selTopic) { toast.error("Select a subject and topic first"); return; }
@@ -433,110 +634,169 @@ export default function StudyMaterials() {
         {/* -- MATERIALS TAB -- */}
         {tab === "materials" && (
           <div className="space-y-6">
-            {/* Choose Level */}
-            <div className={"rounded-2xl shadow-sm p-6 " + CARD}>
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Choose Level</p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">
-                    Subject <span className="text-red-400">*</span>
-                  </label>
-                  <div className="relative">
-                    <select value={selSubject} onChange={e => setSelSubject(e.target.value)}
-                      className={INPUT + " pr-9 appearance-none cursor-pointer"}>
-                      <option value="">-- Select Subject --</option>
-                      {SUBJECTS.map(s => <option key={s.subject_id} value={s.subject_id}>{s.name}</option>)}
-                    </select>
-                    <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">
-                    Topic {topicsLoading && <Loader2 size={11} className="inline ml-1 animate-spin text-indigo-400" />}
-                  </label>
-                  <div className="relative">
-                    <select value={selTopic} onChange={e => setSelTopic(e.target.value)}
-                      disabled={!selSubject || topicsLoading}
-                      className={INPUT + " pr-9 appearance-none cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"}>
-                      <option value="">-- Select Topic --</option>
-                      {topics.map(t => <option key={t.topic_id} value={t.topic_id}>{t.name}</option>)}
-                    </select>
-                    <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">
-                    Concept <span className="text-gray-300 dark:text-gray-600 font-normal">(optional)</span>
-                    {conceptsLoading && <Loader2 size={11} className="inline ml-1 animate-spin text-indigo-400" />}
-                  </label>
-                  <div className="relative">
-                    <select value={selConcept} onChange={e => setSelConcept(e.target.value)}
-                      disabled={!selTopic || conceptsLoading}
-                      className={INPUT + " pr-9 appearance-none cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"}>
-                      <option value="">-- All Concepts --</option>
-                      {concepts.map(c => <option key={c.concept_id} value={c.concept_id}>{c.name}</option>)}
-                    </select>
-                    <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center gap-4 flex-wrap">
-                <button onClick={() => doGenerate(false)} disabled={!selSubject || !selTopic || generating}
-                  className={"flex items-center gap-2 text-white font-semibold px-6 py-2.5 rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-sm bg-gradient-to-r " + palette.grad}>
-                  {generating
-                    ? <><Loader2 size={15} className="animate-spin" /> Generatingâ€¦</>
-                    : <><Sparkles size={15} /> Generate Study Content</>}
+            {activeItem ? (
+              <div className="space-y-6">
+                <button
+                  onClick={() => setActiveKey(null)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-250 dark:bg-gray-850 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-semibold transition-colors shadow-sm w-fit"
+                >
+                  <ChevronRight size={14} className="rotate-180 text-gray-400" />
+                  Back to Topics
                 </button>
-                {selTopic && (
-                  <span className="flex items-center gap-1.5 text-xs text-gray-400">
-                    <Lightbulb size={13} className="text-amber-400" />
-                    AI generates YouTube videos, shortcuts &amp; formulas â€” stored for next time
-                  </span>
+                <GeneratedView
+                  item={activeItem}
+                  palette={pal(activeItem.paletteIdx)}
+                  onMaterialsUpdate={handleMaterialsUpdate}
+                  regenerating={regeneratingKey === activeItem.key}
+                  onRegenerate={() => doGenerate(true, activeItem.key)}
+                />
+              </div>
+            ) : (
+              <>
+                {/* Choose Level */}
+                <div className={"rounded-2xl shadow-sm p-6 " + CARD}>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Choose Level</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">
+                        Subject <span className="text-red-400">*</span>
+                      </label>
+                      <div className="relative">
+                        <select value={selSubject} onChange={e => setSelSubject(e.target.value)}
+                          className={INPUT + " pr-9 appearance-none cursor-pointer"}>
+                          <option value="">-- Select Subject --</option>
+                          {SUBJECTS.map(s => <option key={s.subject_id} value={s.subject_id}>{s.name}</option>)}
+                        </select>
+                        <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">
+                        Topic {topicsLoading && <Loader2 size={11} className="inline ml-1 animate-spin text-indigo-400" />}
+                      </label>
+                      <div className="relative">
+                        <select value={selTopic} onChange={e => setSelTopic(e.target.value)}
+                          disabled={!selSubject || topicsLoading}
+                          className={INPUT + " pr-9 appearance-none cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"}>
+                          <option value="">-- Select Topic --</option>
+                          {topics.map(t => <option key={t.topic_id} value={t.topic_id}>{t.name}</option>)}
+                        </select>
+                        <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">
+                        Concept <span className="text-gray-300 dark:text-gray-600 font-normal">(optional)</span>
+                        {conceptsLoading && <Loader2 size={11} className="inline ml-1 animate-spin text-indigo-400" />}
+                      </label>
+                      <div className="relative">
+                        <select value={selConcept} onChange={e => setSelConcept(e.target.value)}
+                          disabled={!selTopic || conceptsLoading}
+                          className={INPUT + " pr-9 appearance-none cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"}>
+                          <option value="">-- All Concepts --</option>
+                          {concepts.map(c => <option key={c.concept_id} value={c.concept_id}>{c.name}</option>)}
+                        </select>
+                        <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <button onClick={() => doGenerate(false)} disabled={!selSubject || !selTopic || generating}
+                      className={"flex items-center gap-2 text-white font-semibold px-6 py-2.5 rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-sm bg-gradient-to-r " + palette.grad}>
+                      {generating
+                        ? <><Loader2 size={15} className="animate-spin" /> Generating...</>
+                        : <><Sparkles size={15} /> Generate Study Content</>}
+                    </button>
+                    {selTopic && (
+                      <span className="flex items-center gap-1.5 text-xs text-gray-400">
+                        <Lightbulb size={13} className="text-amber-400" />
+                        AI generates YouTube videos, shortcuts &amp; formulas — stored for next time
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Loading skeleton */}
+                {generating && (
+                  <div className="space-y-5">
+                    <div className="h-24 rounded-2xl bg-gray-200 dark:bg-gray-800 animate-pulse" />
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      {[0,1,2].map(i => <div key={i} className="h-48 rounded-2xl bg-gray-200 dark:bg-gray-800 animate-pulse" />)}
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="h-64 rounded-2xl bg-gray-200 dark:bg-gray-800 animate-pulse" />
+                      <div className="h-64 rounded-2xl bg-gray-200 dark:bg-gray-800 animate-pulse" />
+                    </div>
+                  </div>
                 )}
-              </div>
-            </div>
 
-            {/* Loading skeleton */}
-            {generating && (
-              <div className="space-y-5">
-                <div className="h-24 rounded-2xl bg-gray-200 dark:bg-gray-800 animate-pulse" />
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  {[0,1,2].map(i => <div key={i} className="h-48 rounded-2xl bg-gray-200 dark:bg-gray-800 animate-pulse" />)}
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="h-64 rounded-2xl bg-gray-200 dark:bg-gray-800 animate-pulse" />
-                  <div className="h-64 rounded-2xl bg-gray-200 dark:bg-gray-800 animate-pulse" />
-                </div>
-              </div>
-            )}
-
-            {/* Generated History Cards */}
-            {!generating && generatedHistory.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 px-1">
-                  <BookMarked size={14} className="text-gray-400" />
-                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Generated Topics</h3>
-                  <span className="text-xs text-gray-300 dark:text-gray-600">â€” click to view</span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                  {generatedHistory.map(item => (
-                    <HistoryCard key={item.key} item={item}
-                      active={activeKey === item.key}
-                      onClick={() => setActiveKey(prev => prev === item.key ? null : item.key)} />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Active generated content */}
-            {!generating && activeItem && (
-              <GeneratedView
-                item={activeItem}
-                palette={pal(activeItem.paletteIdx)}
-                onMaterialsUpdate={handleMaterialsUpdate}
-                regenerating={regeneratingKey === activeItem.key}
-                onRegenerate={() => doGenerate(true, activeItem.key)}
-              />
+                {/* Generated History Cards */}
+                {!generating && (historyLoading ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 px-1">
+                      <BookMarked size={14} className="text-gray-400" />
+                      <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Loading Study Materials...</h3>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                      {[...Array(4)].map((_, i) => (
+                        <div key={i} className="h-28 bg-gray-100 dark:bg-gray-800/50 animate-pulse rounded-2xl border-2 border-gray-50 dark:border-gray-800" />
+                      ))}
+                    </div>
+                  </div>
+                ) : generatedHistory.length > 0 ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 px-1 flex-wrap">
+                      <BookMarked size={14} className="text-gray-400" />
+                      <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Generated Topics</h3>
+                      <span className="text-xs text-gray-450 dark:text-gray-500 font-medium">— click card to view details</span>
+                      <div className="ml-auto flex items-center gap-2">
+                        {selectMode && (
+                          <>
+                            <button
+                              onClick={handleSelectAllKeys}
+                              className="px-2.5 py-1 bg-gray-100 dark:bg-gray-850 hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-semibold transition-colors"
+                            >
+                              {selectedKeys.size === generatedHistory.length ? "Deselect All" : "Select All"}
+                            </button>
+                            {selectedKeys.size > 0 && (
+                              <button
+                                onClick={() => setDeleteConfirm({ keys: Array.from(selectedKeys), title: "" })}
+                                className="px-2.5 py-1 bg-red-650 hover:bg-red-600 text-white rounded-xl text-xs font-bold transition-colors shadow-sm flex items-center gap-1"
+                              >
+                                <Trash2 size={12} /> Delete ({selectedKeys.size})
+                              </button>
+                            )}
+                          </>
+                        )}
+                        <button
+                          onClick={() => {
+                            setSelectMode(!selectMode);
+                            setSelectedKeys(new Set());
+                          }}
+                          className={"px-2.5 py-1 rounded-xl text-xs font-semibold transition-colors border " +
+                            (selectMode
+                              ? "bg-amber-500 text-white border-amber-400 hover:bg-amber-600"
+                              : "bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800")}
+                        >
+                          {selectMode ? "Cancel" : "Select"}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                      {generatedHistory.map(item => (
+                        <HistoryCard key={item.key} item={item}
+                          active={activeKey === item.key}
+                          onView={() => setActiveKey(prev => prev === item.key ? null : item.key)}
+                          onDelete={() => handleDeleteCard(item.key)}
+                          deleting={deletingKey === item.key}
+                          selectMode={selectMode}
+                          selected={selectedKeys.has(item.key)}
+                          onToggleSelect={() => handleToggleSelectKey(item.key)} />
+                      ))}
+                    </div>
+                  </div>
+                ) : null)}
+              </>
             )}
           </div>
         )}
@@ -598,6 +858,14 @@ export default function StudyMaterials() {
         )}
       </div>
       {pdfModal && <PdfModal url={pdfModal.url} title={pdfModal.title} onClose={() => setPdfModal(null)} />}
+      {deleteConfirm && (
+        <DeleteConfirmModal
+          title={deleteConfirm.title}
+          count={deleteConfirm.keys.length}
+          onClose={() => setDeleteConfirm(null)}
+          onConfirm={executeDeleteCard}
+        />
+      )}
     </div>
   );
 }

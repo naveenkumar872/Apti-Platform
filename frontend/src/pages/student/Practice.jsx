@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import toast from "react-hot-toast";
@@ -11,6 +11,44 @@ import {
 const C = "bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800";
 const BTN_PRIMARY = "flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed";
 const BTN_OUTLINE = "flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors";
+
+/* -- Custom Confirmation Modal -- */
+function DeleteConfirmModal({ title, count, onClose, onConfirm }) {
+  const isMultiple = count > 1;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
+        <div className="mx-auto w-12 h-12 rounded-full bg-red-50 dark:bg-red-950/40 text-red-500 flex items-center justify-center mb-4">
+          <Trash2 size={22} />
+        </div>
+        <h3 className="text-base font-bold text-gray-800 dark:text-gray-100 mb-1">
+          {isMultiple ? "Delete Sessions" : "Delete Session"}
+        </h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-5 leading-relaxed">
+          {isMultiple ? (
+            <span>Are you sure you want to delete the <strong>{count}</strong> selected practice sessions? This cannot be undone.</span>
+          ) : (
+            <span>Are you sure you want to delete <strong>{title}</strong>? This cannot be undone.</span>
+          )}
+        </p>
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 font-semibold py-2.5 rounded-xl text-xs transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold py-2.5 rounded-xl text-xs transition-colors shadow-sm"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const SUBJECTS = [
   { subject_id: "00000000-0000-0000-0000-000000000001", name: "Quantitative Aptitude" },
@@ -456,7 +494,7 @@ function QuickMethod({ onStart, loading, sessions }) {
 /* ═══════════════════════════════════════════
    SESSION HISTORY CARD
 ═══════════════════════════════════════════ */
-function SessionCard({ session, onOpen, onDelete, deleting }) {
+function SessionCard({ session, onOpen, onDelete, deleting, selectMode, selected, onToggleSelect }) {
   const isComplete = session.status === "completed";
   const pct = session.accuracy_percent || 0;
   const date = session.started_at
@@ -465,10 +503,22 @@ function SessionCard({ session, onOpen, onDelete, deleting }) {
   const grad = { topic: "from-indigo-500 to-purple-600", syllabus: "from-emerald-500 to-teal-600", quick: "from-amber-500 to-orange-500" }[session.method] || "from-indigo-500 to-purple-600";
 
   return (
-    <div className={"rounded-2xl overflow-hidden hover:shadow-md transition-all " + C}>
+    <div
+      onClick={selectMode ? onToggleSelect : undefined}
+      className={"rounded-2xl overflow-hidden hover:shadow-md transition-all relative " + (selectMode ? "cursor-pointer " : "") + C + (selected ? " border-indigo-500 ring-2 ring-indigo-500/20" : "")}
+    >
       <div className={"h-1 bg-gradient-to-r " + grad} />
       <div className="p-4">
         <div className="flex items-start justify-between gap-2 mb-2">
+          {selectMode && (
+            <div className="mr-2 mt-0.5 flex-shrink-0">
+              {selected ? (
+                <CheckSquare size={17} className="text-indigo-500" />
+              ) : (
+                <Square size={17} className="text-gray-300 dark:text-gray-600" />
+              )}
+            </div>
+          )}
           <div className="min-w-0 flex-1">
             <p className="text-sm font-bold text-gray-800 dark:text-gray-100 line-clamp-2 leading-tight">{session.title || "Practice Session"}</p>
             <p className="text-xs text-gray-400 mt-0.5">{date}</p>
@@ -491,16 +541,18 @@ function SessionCard({ session, onOpen, onDelete, deleting }) {
             </span>
           </div>
         )}
-        <div className="flex gap-2">
-          <button onClick={() => onOpen(session)}
-            className={"flex-1 py-1.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r hover:opacity-90 transition-opacity " + grad}>
-            {isComplete ? "Review" : "Continue"}
-          </button>
-          <button onClick={() => onDelete(session.session_id)} disabled={deleting}
-            className="w-8 h-8 rounded-xl bg-gray-50 dark:bg-gray-800 flex items-center justify-center text-gray-400 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-500 transition-colors disabled:opacity-40">
-            {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={13} />}
-          </button>
-        </div>
+        {!selectMode && (
+          <div className="flex gap-2">
+            <button onClick={(e) => { e.stopPropagation(); onOpen(session); }}
+              className={"flex-1 py-1.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r hover:opacity-90 transition-opacity " + grad}>
+              {isComplete ? "Review" : "Continue"}
+            </button>
+            <button onClick={(e) => { e.stopPropagation(); onDelete(session.session_id); }} disabled={deleting}
+              className="w-8 h-8 rounded-xl bg-gray-50 dark:bg-gray-800 flex items-center justify-center text-gray-400 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-500 transition-colors disabled:opacity-40">
+              {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={13} />}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -812,6 +864,9 @@ export default function Practice() {
   const [sessions,   setSessions]   = useState([]);
   const [sessLoading,setSessLoading]= useState(false);
   const [deletingId, setDeletingId] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedSessions, setSelectedSessions] = useState(new Set());
 
   const loadSessions = useCallback(async () => {
     setSessLoading(true);
@@ -875,14 +930,66 @@ export default function Practice() {
 
   const handleRestart = () => { setSession(null); setResult(null); setView("home"); };
 
-  const handleDeleteSession = async (id) => {
-    setDeletingId(id);
-    try {
-      await api.delete(`/student/practice/sessions/${id}`);
-      setSessions(prev => prev.filter(s => s.session_id !== id));
-      toast.success("Session deleted");
-    } catch { toast.error("Failed to delete"); }
-    setDeletingId(null);
+  const handleDeleteSession = (id) => {
+    const sess = sessions.find(s => s.session_id === id);
+    setDeleteConfirm({ ids: [id], title: sess?.title || "Practice Session" });
+  };
+
+  const executeDeleteSessions = async () => {
+    if (!deleteConfirm) return;
+    const { ids } = deleteConfirm;
+    setDeleteConfirm(null);
+
+    if (ids.length === 1) {
+      const id = ids[0];
+      setDeletingId(id);
+      try {
+        await api.delete(`/student/practice/sessions/${id}`);
+        setSessions(prev => prev.filter(s => s.session_id !== id));
+        setSelectedSessions(prev => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+        toast.success("Session deleted");
+      } catch {
+        toast.error("Failed to delete");
+      }
+      setDeletingId(null);
+    } else {
+      setSessLoading(true);
+      try {
+        await Promise.all(ids.map(id => api.delete(`/student/practice/sessions/${id}`)));
+        setSessions(prev => prev.filter(s => !ids.includes(s.session_id)));
+        setSelectedSessions(new Set());
+        setSelectMode(false);
+        toast.success(`${ids.length} sessions deleted`);
+      } catch {
+        toast.error("Failed to delete some sessions");
+        loadSessions();
+      }
+      setSessLoading(false);
+    }
+  };
+
+  const handleToggleSelectSession = (id) => {
+    setSelectedSessions(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllSessions = () => {
+    if (selectedSessions.size === sessions.length) {
+      setSelectedSessions(new Set());
+    } else {
+      setSelectedSessions(new Set(sessions.map(s => s.session_id)));
+    }
   };
 
   const handleOpenSession = (sess) => {
@@ -1005,17 +1112,52 @@ export default function Practice() {
               </div>
             ) : sessions.length > 0 && (
               <div>
-                <div className="flex items-center gap-2 px-1 mb-4">
-                  <BarChart3 size={14} className="text-indigo-400" />
+                <div className="flex items-center gap-2 px-1 mb-4 flex-wrap">
+                  <BarChart3 size={14} className="text-indigo-400 animate-pulse" />
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Past Sessions</h3>
-                  <span className="ml-auto text-xs text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">{sessions.length}</span>
+                  <span className="text-xs text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">{sessions.length}</span>
+                  <div className="ml-auto flex items-center gap-2">
+                    {selectMode && (
+                      <>
+                        <button
+                          onClick={handleSelectAllSessions}
+                          className="px-2.5 py-1 bg-gray-100 dark:bg-gray-850 hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-semibold transition-colors"
+                        >
+                          {selectedSessions.size === sessions.length ? "Deselect All" : "Select All"}
+                        </button>
+                        {selectedSessions.size > 0 && (
+                          <button
+                            onClick={() => setDeleteConfirm({ ids: Array.from(selectedSessions), title: "" })}
+                            className="px-2.5 py-1 bg-red-650 hover:bg-red-600 text-white rounded-xl text-xs font-bold transition-colors shadow-sm flex items-center gap-1"
+                          >
+                            <Trash2 size={12} /> Delete ({selectedSessions.size})
+                          </button>
+                        )}
+                      </>
+                    )}
+                    <button
+                      onClick={() => {
+                        setSelectMode(!selectMode);
+                        setSelectedSessions(new Set());
+                      }}
+                      className={"px-2.5 py-1 rounded-xl text-xs font-semibold transition-colors border " +
+                        (selectMode
+                          ? "bg-amber-500 text-white border-amber-400 hover:bg-amber-600"
+                          : "bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800")}
+                    >
+                      {selectMode ? "Cancel" : "Select"}
+                    </button>
+                  </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {sessions.map(s => (
                     <SessionCard key={s.session_id} session={s}
                       onOpen={handleOpenSession}
                       onDelete={handleDeleteSession}
-                      deleting={deletingId === s.session_id} />
+                      deleting={deletingId === s.session_id}
+                      selectMode={selectMode}
+                      selected={selectedSessions.has(s.session_id)}
+                      onToggleSelect={() => handleToggleSelectSession(s.session_id)} />
                   ))}
                 </div>
               </div>
@@ -1023,6 +1165,14 @@ export default function Practice() {
           </>
         )}
       </div>
+      {deleteConfirm && (
+        <DeleteConfirmModal
+          title={deleteConfirm.title}
+          count={deleteConfirm.ids.length}
+          onClose={() => setDeleteConfirm(null)}
+          onConfirm={executeDeleteSessions}
+        />
+      )}
     </div>
   );
 }

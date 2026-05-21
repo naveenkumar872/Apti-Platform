@@ -115,6 +115,7 @@ const getMaterials = async (req, res, next) => {
 
     const result = await query(
       `SELECT m.material_id, m.title, m.type, m.file_url, m.description, m.download_allowed,
+              m.subject_id, m.topic_id, m.concept_id, m.uploaded_by,
               s.name as subject_name, t.name as topic_name, c.name as concept_name,
               m.created_at
        FROM materials m

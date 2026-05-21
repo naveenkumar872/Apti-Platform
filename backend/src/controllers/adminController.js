@@ -6,17 +6,32 @@ const getDashboard = async (req, res, next) => {
   try {
     const [students, activeToday, testsThisWeek, avgScore] = await Promise.all([
       query("SELECT COUNT(*) as count FROM users WHERE role='student' AND is_active=1"),
-      query("SELECT COUNT(DISTINCT student_id) as count FROM test_attempts WHERE started_at > NOW() - INTERVAL 24 HOUR"),
-      query("SELECT COUNT(*) as count FROM tests WHERE start_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 7 DAY)"),
+      // Active today = any student who: logged in OR took a test OR ran a practice session in the last 24h.
+      query(`
+        SELECT COUNT(*) as count FROM users u
+        WHERE u.role='student' AND u.is_active=1
+          AND (
+            u.last_login > NOW() - INTERVAL 24 HOUR
+            OR EXISTS (SELECT 1 FROM test_attempts ta WHERE ta.student_id=u.user_id AND ta.started_at > NOW() - INTERVAL 24 HOUR)
+            OR EXISTS (SELECT 1 FROM practice_sessions ps WHERE ps.student_id=u.user_id AND ps.started_at > NOW() - INTERVAL 24 HOUR)
+          )
+      `),
+      // Tests this week = test attempts submitted in the last 7 days.
+      query(`
+        SELECT COUNT(*) as count FROM test_attempts
+        WHERE status='submitted' AND submitted_at > NOW() - INTERVAL 7 DAY
+      `),
       query("SELECT ROUND(AVG(accuracy_percent),2) as avg_score FROM test_attempts WHERE submitted_at > NOW() - INTERVAL 30 DAY AND status='submitted'"),
     ]);
 
     const topPerformers = await query(
-      `SELECT u.user_id, u.name, AVG(ta.accuracy_percent) as avg_score, AVG(ta.accuracy_percent) as avg_accuracy
+      `SELECT u.user_id, u.name, ROUND(AVG(ta.accuracy_percent),1) as avg_score,
+              ROUND(AVG(ta.accuracy_percent),1) as avg_accuracy,
+              COUNT(ta.attempt_id) as test_count
        FROM users u JOIN test_attempts ta ON ta.student_id = u.user_id
-       WHERE ta.submitted_at > NOW() - INTERVAL 7 DAY AND ta.status='submitted'
+       WHERE ta.submitted_at > NOW() - INTERVAL 30 DAY AND ta.status='submitted'
        GROUP BY u.user_id, u.name
-       ORDER BY avg_accuracy DESC LIMIT 10`
+       ORDER BY avg_accuracy DESC LIMIT 5`
     );
 
     const recentViolations = await query(
@@ -25,6 +40,97 @@ const getDashboard = async (req, res, next) => {
        JOIN users u ON u.user_id = v.student_id
        ORDER BY v.occurred_at DESC LIMIT 5`
     );
+
+    // 7-day activity trend: tests submitted + practice sessions completed per day.
+    const activityTrend = await query(`
+      SELECT
+        DATE(d.day) as day,
+        COALESCE(SUM(CASE WHEN ta.attempt_id IS NOT NULL THEN 1 ELSE 0 END), 0) as tests,
+        COALESCE(SUM(CASE WHEN ps.session_id IS NOT NULL THEN 1 ELSE 0 END), 0) as practices
+      FROM (
+        SELECT CURDATE() - INTERVAL 6 DAY as day UNION ALL
+        SELECT CURDATE() - INTERVAL 5 DAY UNION ALL
+        SELECT CURDATE() - INTERVAL 4 DAY UNION ALL
+        SELECT CURDATE() - INTERVAL 3 DAY UNION ALL
+        SELECT CURDATE() - INTERVAL 2 DAY UNION ALL
+        SELECT CURDATE() - INTERVAL 1 DAY UNION ALL
+        SELECT CURDATE()
+      ) d
+      LEFT JOIN test_attempts ta
+        ON DATE(ta.submitted_at) = DATE(d.day) AND ta.status='submitted'
+      LEFT JOIN practice_sessions ps
+        ON DATE(ps.submitted_at) = DATE(d.day)
+      GROUP BY DATE(d.day)
+      ORDER BY day
+    `);
+
+    // At-risk students: low accuracy OR no recent activity (no login in 7 days).
+    const atRiskStudents = await query(`
+      SELECT u.user_id, u.name, u.email, u.last_login, u.created_at,
+             COALESCE((SELECT ROUND(AVG(ta.accuracy_percent),1) FROM test_attempts ta
+                        WHERE ta.student_id=u.user_id AND ta.status='submitted'), 0) as avg_score,
+             COALESCE((SELECT COUNT(*) FROM test_attempts ta
+                        WHERE ta.student_id=u.user_id AND ta.status='submitted'), 0) as tests_taken,
+             CASE
+               WHEN u.last_login IS NULL THEN 'never_logged_in'
+               WHEN u.last_login < NOW() - INTERVAL 7 DAY THEN 'inactive_7d'
+               ELSE 'low_score'
+             END as risk_reason
+      FROM users u
+      WHERE u.role='student' AND u.is_active=1
+        AND (
+          u.last_login IS NULL
+          OR u.last_login < NOW() - INTERVAL 7 DAY
+          OR EXISTS (
+            SELECT 1 FROM test_attempts ta
+            WHERE ta.student_id=u.user_id AND ta.status='submitted'
+            GROUP BY ta.student_id
+            HAVING AVG(ta.accuracy_percent) < 50
+          )
+        )
+      ORDER BY (u.last_login IS NULL) DESC, u.last_login ASC
+      LIMIT 5
+    `);
+
+    // Weak topics across the platform — lowest average accuracy.
+    const weakTopics = await query(`
+      SELECT t.topic_id, t.name as topic_name, s.name as subject_name,
+             ROUND(AVG(ssp.accuracy_percent),1) as avg_accuracy,
+             COUNT(DISTINCT ssp.student_id) as student_count
+      FROM student_skill_profile ssp
+      JOIN topics t ON t.topic_id = ssp.topic_id
+      JOIN subjects s ON s.subject_id = t.subject_id
+      GROUP BY t.topic_id, t.name, s.name
+      HAVING student_count >= 1
+      ORDER BY avg_accuracy ASC
+      LIMIT 5
+    `);
+
+    // Recent activity feed — newest test submissions & practice sessions.
+    const [recentTests, recentPractice] = await Promise.all([
+      query(`
+        SELECT 'test' as kind, u.name as student_name, t.title as detail,
+               ta.accuracy_percent as score, ta.submitted_at as at
+        FROM test_attempts ta
+        JOIN users u ON u.user_id = ta.student_id
+        JOIN tests t ON t.test_id = ta.test_id
+        WHERE ta.status='submitted'
+        ORDER BY ta.submitted_at DESC LIMIT 10
+      `),
+      query(`
+        SELECT 'practice' as kind, u.name as student_name,
+               COALESCE(ps.config_json->>'$.title', 'Practice session') as detail,
+               ps.accuracy_percent as score, ps.submitted_at as at
+        FROM practice_sessions ps
+        JOIN users u ON u.user_id = ps.student_id
+        WHERE ps.submitted_at IS NOT NULL
+        ORDER BY ps.submitted_at DESC LIMIT 10
+      `).catch(() => ({ rows: [] })), // config_json may not exist on older schemas
+    ]);
+    const recentActivity = [...recentTests.rows, ...recentPractice.rows]
+      .filter(r => r.at)
+      .sort((a, b) => new Date(b.at) - new Date(a.at))
+      .slice(0, 8);
 
     res.json({
       stats: {
@@ -39,6 +145,10 @@ const getDashboard = async (req, res, next) => {
       avg_score: parseFloat(avgScore.rows[0].avg_score) || 0,
       top_performers: topPerformers.rows,
       recent_violations: recentViolations.rows,
+      activity_trend: activityTrend.rows,
+      at_risk_students: atRiskStudents.rows,
+      weak_topics: weakTopics.rows,
+      recent_activity: recentActivity,
     });
   } catch (err) {
     next(err);

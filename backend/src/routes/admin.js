@@ -1,11 +1,42 @@
 const express = require('express');
 const router = express.Router();
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 const { authenticate, authorize } = require('../middleware/auth');
 const adminController = require('../controllers/adminController');
 
 // All admin routes require authentication
 router.use(authenticate);
 router.use(authorize('admin', 'teacher'));
+
+// File upload — saves to backend/uploads/<timestamp>-<originalname> and returns a URL.
+const UPLOAD_DIR = path.join(__dirname, '../../uploads');
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
+    filename: (_req, file, cb) => {
+      const safe = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+      cb(null, `${Date.now()}-${safe}`);
+    },
+  }),
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB
+  fileFilter: (_req, file, cb) => {
+    const ok = /\.(pdf|docx?|pptx?|xlsx?|png|jpe?g|webp|gif|txt|md|csv)$/i.test(file.originalname);
+    cb(ok ? null : new Error('Unsupported file type'), ok);
+  },
+});
+
+router.post('/upload', upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  res.json({
+    url: `/uploads/${req.file.filename}`,
+    name: req.file.originalname,
+    size: req.file.size,
+  });
+});
 
 // Dashboard
 router.get('/dashboard', adminController.getDashboard);

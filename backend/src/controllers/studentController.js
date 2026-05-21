@@ -75,12 +75,36 @@ const getDashboard = async (req, res, next) => {
       planProgressData = { plan_id: pp.plan_id, duration_weeks: pp.duration_weeks, total, completed, percent };
     }
 
+    // Streak: consecutive days (ending today) with any activity.
+    const activityDays = await query(
+      `SELECT DATE(submitted_at) as d FROM test_attempts WHERE student_id=? AND status='submitted' AND submitted_at IS NOT NULL
+       UNION
+       SELECT DATE(submitted_at) FROM practice_sessions WHERE student_id=? AND submitted_at IS NOT NULL
+       UNION
+       SELECT DATE(pt.completed_at) FROM plan_tasks pt
+         JOIN study_plans sp ON sp.plan_id = pt.plan_id
+         WHERE sp.student_id=? AND pt.is_completed=1 AND pt.completed_at IS NOT NULL`,
+      [student_id, student_id, student_id]
+    );
+    const daySet = new Set(activityDays.rows.map(r => {
+      const d = r.d instanceof Date ? r.d : new Date(r.d);
+      return d.toISOString().slice(0, 10);
+    }));
+    let streak = 0;
+    const cursor = new Date();
+    // If today has no activity, start counting from yesterday (so a streak isn't broken before midnight).
+    if (!daySet.has(cursor.toISOString().slice(0, 10))) cursor.setDate(cursor.getDate() - 1);
+    while (daySet.has(cursor.toISOString().slice(0, 10))) {
+      streak += 1;
+      cursor.setDate(cursor.getDate() - 1);
+    }
+
     res.json({
       stats: {
         total_tests: Number(statsRow.total_tests) || 0,
         avg_score: Number(statsRow.avg_score) || 0,
         practice_sessions: Number(statsRow.practice_sessions) || 0,
-        streak: 0,
+        streak,
       },
       weak_areas: skills.rows,
       recent_attempts: recentAttempts.rows,
@@ -681,6 +705,47 @@ const submitTest = async (req, res, next) => {
        accuracy_percent=?, time_taken_seconds=? WHERE attempt_id=?`,
       [Math.max(0, score), accuracy, time_taken, attempt_id]
     );
+
+    // Roll up per-topic accuracy into student_skill_profile so weak-area
+    // analytics on the dashboard and AI-plan generator stay current.
+    try {
+      const topicRows = await query(
+        `SELECT t.topic_id, aa.is_correct
+         FROM attempt_answers aa
+         JOIN questions q ON q.question_id = aa.question_id
+         JOIN concepts c ON c.concept_id = q.concept_id
+         JOIN topics t ON t.topic_id = c.topic_id
+         WHERE aa.attempt_id = ? AND aa.selected_answer IS NOT NULL`,
+        [attempt_id]
+      );
+
+      const byTopic = {};
+      for (const row of topicRows.rows) {
+        if (!byTopic[row.topic_id]) byTopic[row.topic_id] = { total: 0, correct: 0 };
+        byTopic[row.topic_id].total += 1;
+        byTopic[row.topic_id].correct += row.is_correct ? 1 : 0;
+      }
+
+      const studentId = attempt.rows[0].student_id;
+      for (const [topic_id, stat] of Object.entries(byTopic)) {
+        const acc = Math.round((stat.correct / stat.total) * 100);
+        await query(
+          `INSERT INTO student_skill_profile (student_id, topic_id, total_attempts, correct_count, accuracy_percent, last_attempted)
+           VALUES (?, ?, ?, ?, ?, NOW())
+           ON DUPLICATE KEY UPDATE
+             total_attempts = student_skill_profile.total_attempts + VALUES(total_attempts),
+             correct_count  = student_skill_profile.correct_count  + VALUES(correct_count),
+             accuracy_percent = ROUND(((student_skill_profile.correct_count + VALUES(correct_count)) /
+                                       (student_skill_profile.total_attempts + VALUES(total_attempts))) * 100, 2),
+             is_weak = ((student_skill_profile.correct_count + VALUES(correct_count)) /
+                        (student_skill_profile.total_attempts + VALUES(total_attempts))) < 0.6,
+             last_attempted = NOW()`,
+          [studentId, topic_id, stat.total, stat.correct, acc]
+        );
+      }
+    } catch (skillErr) {
+      console.error('skill_profile update failed (non-fatal):', skillErr.message);
+    }
 
     res.json({
       attempt_id,

@@ -444,13 +444,20 @@ const deleteQuestion = async (req, res, next) => {
 /** GET /admin/materials */
 const getMaterials = async (req, res, next) => {
   try {
+    const { topic_id, type } = req.query;
+    const conditions = ['m.is_active = 1'];
+    const params = [];
+    if (topic_id) { conditions.push('m.topic_id = ?'); params.push(topic_id); }
+    if (type)     { conditions.push('m.type = ?');     params.push(type); }
+    const where = conditions.join(' AND ');
     const result = await query(
       `SELECT m.*, u.name as uploaded_by_name, s.name as subject_name, t.name as topic_name
        FROM materials m LEFT JOIN users u ON u.user_id = m.uploaded_by
        LEFT JOIN subjects s ON s.subject_id = m.subject_id
        LEFT JOIN topics t ON t.topic_id = m.topic_id
-       WHERE m.is_active = 1
-       ORDER BY m.created_at DESC`
+       WHERE ${where}
+       ORDER BY m.created_at DESC`,
+      params
     );
     res.json({ materials: result.rows });
   } catch (err) {
@@ -624,7 +631,15 @@ const getStudentPlan = async (req, res, next) => {
     );
     const plan = planResult.rows[0] || null;
     if (plan) {
-      const tasks = await query('SELECT * FROM plan_tasks WHERE plan_id = ?', [plan.plan_id]);
+      const tasks = await query(
+        `SELECT pt.*, t.name as topic_name, t.subject_id, s.name as subject_name
+         FROM plan_tasks pt
+         LEFT JOIN topics t ON t.topic_id = pt.topic_id
+         LEFT JOIN subjects s ON s.subject_id = t.subject_id
+         WHERE pt.plan_id = ?
+         ORDER BY pt.week_number, pt.day_number`,
+        [plan.plan_id]
+      );
       plan.tasks = tasks.rows;
     }
     res.json({ plan });

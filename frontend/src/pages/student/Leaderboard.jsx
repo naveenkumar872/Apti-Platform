@@ -79,8 +79,8 @@ export default function Leaderboard() {
                   <p className="text-xs text-gray-400">{entry.college || "Unknown College"}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-bold text-gray-800 dark:text-gray-100">{Math.round(entry.avg_score)}%</p>
-                  <p className="text-xs text-gray-400">{entry.tests_taken} tests</p>
+                  <p className="text-sm font-bold text-gray-800 dark:text-gray-100">{Math.round(entry.avg_accuracy || 0)}%</p>
+                  <p className="text-xs text-gray-400">{entry.total_tests} tests</p>
                 </div>
               </div>
             );

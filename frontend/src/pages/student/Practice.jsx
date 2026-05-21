@@ -61,7 +61,7 @@ function SetupView({ onStart }) {
             <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Subject *</label>
             <select value={cfg.subject_id} onChange={e => setCfg(c => ({ ...c, subject_id: e.target.value }))} className={SEL}>
               <option value="">Select subject...</option>
-              {subjects.map(s => <option key={s.subject_id} value={s.subject_id}>{s.subject_name}</option>)}
+              {subjects.map(s => <option key={s.subject_id} value={s.subject_id}>{s.name}</option>)}
             </select>
             <ChevronDown size={14} className="absolute right-3 top-[2.35rem] text-gray-400 pointer-events-none" />
           </div>
@@ -70,7 +70,7 @@ function SetupView({ onStart }) {
               <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Topic (optional)</label>
               <select value={cfg.topic_id} onChange={e => setCfg(c => ({ ...c, topic_id: e.target.value }))} className={SEL}>
                 <option value="">All topics</option>
-                {topics.map(t => <option key={t.topic_id} value={t.topic_id}>{t.topic_name}</option>)}
+                {topics.map(t => <option key={t.topic_id} value={t.topic_id}>{t.name}</option>)}
               </select>
               <ChevronDown size={14} className="absolute right-3 top-[2.35rem] text-gray-400 pointer-events-none" />
             </div>
@@ -115,19 +115,20 @@ function QuestionView({ session, onEnd }) {
     if (answers[idx] !== undefined) return;
     setAnswers(a => ({ ...a, [idx]: optionKey }));
     try {
-      const r = await api.post(`/student/practice/${session.session_id}/answer`, { question_id: q.question_id, selected_option: optionKey });
+      const r = await api.post(`/student/practice/submit-answer`, { session_id: session.session_id, question_id: q.question_id, selected_answer: optionKey });
       setFeedback(f => ({ ...f, [idx]: r.data }));
     } catch {}
   };
 
   const end = async () => {
     setSubmitting(true);
-    try { const r = await api.post(`/student/practice/${session.session_id}/end`); onEnd(r.data); }
+    try { const r = await api.post(`/student/practice/end`, { session_id: session.session_id }); onEnd(r.data); }
     catch {}
     setSubmitting(false);
   };
 
-  const opts = q ? [["A", q.option_a], ["B", q.option_b], ["C", q.option_c], ["D", q.option_d]].filter(o => o[1]) : [];
+  const rawOpts = q?.options ? (typeof q.options === 'string' ? JSON.parse(q.options) : q.options) : [];
+  const opts = rawOpts.map((o, i) => [String.fromCharCode(65 + i), typeof o === 'object' ? o.text || o : o]).filter(o => o[1]);
   const fb = feedback[idx];
   const chosen = answers[idx];
 
@@ -150,13 +151,13 @@ function QuestionView({ session, onEnd }) {
 
       {/* Question card */}
       <div className={"rounded-2xl border p-6 mb-4 " + C}>
-        {q?.difficulty && <span className={"text-xs font-semibold px-2 py-0.5 rounded-full mb-3 inline-block " + (q.difficulty === "hard" ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" : q.difficulty === "medium" ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-500" : "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400")}>{q.difficulty}</span>}
+        {q?.difficulty && (() => { const dl = typeof q.difficulty === 'number' ? (q.difficulty <= 2 ? 'easy' : q.difficulty <= 3 ? 'medium' : 'hard') : q.difficulty; return <span className={"text-xs font-semibold px-2 py-0.5 rounded-full mb-3 inline-block " + (dl === "hard" ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" : dl === "medium" ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-500" : "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400")}>{dl}</span>; })()}
         <p className="text-base font-semibold text-gray-800 dark:text-gray-100 mb-5">{q?.question_text}</p>
         <div className="space-y-2.5">
           {opts.map(([key, text]) => {
             let cls = "border border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-600 bg-white dark:bg-gray-800/60 hover:bg-indigo-50 dark:hover:bg-indigo-950/30";
             if (chosen !== undefined) {
-              if (key === fb?.correct_option) cls = "border-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-600";
+              if (key === fb?.correct_answer) cls = "border-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-600";
               else if (key === chosen && !fb?.is_correct) cls = "border-red-400 bg-red-50 dark:bg-red-950/30 dark:border-red-600";
               else cls = "border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800/40 opacity-60";
             }
@@ -165,7 +166,7 @@ function QuestionView({ session, onEnd }) {
                 className={"w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl border transition-all " + cls}>
                 <span className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-xs font-bold text-gray-600 dark:text-gray-300 flex-shrink-0">{key}</span>
                 <span className="text-sm text-gray-700 dark:text-gray-200">{text}</span>
-                {chosen !== undefined && key === fb?.correct_option && <CheckCircle2 size={16} className="ml-auto text-emerald-500 flex-shrink-0" />}
+                {chosen !== undefined && key === fb?.correct_answer && <CheckCircle2 size={16} className="ml-auto text-emerald-500 flex-shrink-0" />}
                 {chosen !== undefined && key === chosen && !fb?.is_correct && <XCircle size={16} className="ml-auto text-red-400 flex-shrink-0" />}
               </button>
             );
@@ -202,8 +203,11 @@ function QuestionView({ session, onEnd }) {
 }
 
 function ResultView({ result, onRestart }) {
-  const score = result?.score || 0;
-  const r = result?.results || {};
+  const score = result?.accuracy_percent || 0;
+  const total = result?.total || 0;
+  const correct = result?.correct || result?.score || 0;
+  const wrong = result?.wrong || (total - correct);
+  const r = { correct, wrong, skipped: Math.max(0, total - correct - wrong) };
   return (
     <div className="max-w-md mx-auto text-center">
       <div className={"rounded-2xl border p-8 " + C}>

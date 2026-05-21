@@ -1,33 +1,30 @@
-﻿import { useEffect, useState } from "react";
+﻿import { useEffect, useState, useCallback } from "react";
 import api from "../../services/api";
 import toast from "react-hot-toast";
 import {
-  Play, FileText, ArrowLeft, ExternalLink, StickyNote,
+  Play, FileText, ExternalLink, StickyNote,
   Search, X, Zap, FlaskConical, ChevronDown, Sparkles,
-  CheckCircle, BookOpen
+  CheckCircle, BookOpen, Trash2, PlayCircle, Lightbulb,
+  ChevronRight, Loader2, RefreshCw, Download, BookMarked
 } from "lucide-react";
 
-/* Color palette assigned by subject index — no hardcoding */
-const PALETTES = [
-  { grad: "from-violet-600 to-purple-700", ring: "ring-violet-400", badge: "bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300", btn: "from-violet-600 to-purple-700" },
-  { grad: "from-blue-600 to-cyan-600",     ring: "ring-blue-400",   badge: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",         btn: "from-blue-600 to-cyan-600"     },
-  { grad: "from-emerald-500 to-teal-600",  ring: "ring-emerald-400",badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300",btn: "from-emerald-500 to-teal-600" },
-  { grad: "from-orange-500 to-amber-500",  ring: "ring-orange-400", badge: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300",  btn: "from-orange-500 to-amber-500"  },
-  { grad: "from-rose-600 to-pink-600",     ring: "ring-rose-400",   badge: "bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-300",          btn: "from-rose-600 to-pink-600"     },
-  { grad: "from-cyan-600 to-sky-600",      ring: "ring-cyan-400",   badge: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-300",          btn: "from-cyan-600 to-sky-600"      },
+const SUBJECTS = [
+  { subject_id: "00000000-0000-0000-0000-000000000001", name: "Quantitative Aptitude" },
+  { subject_id: "00000000-0000-0000-0000-000000000002", name: "Logical Reasoning" },
+  { subject_id: "00000000-0000-0000-0000-000000000003", name: "Verbal Ability" },
+  { subject_id: "00000000-0000-0000-0000-000000000004", name: "Data Interpretation" },
 ];
-const pal = (idx) => PALETTES[idx % PALETTES.length];
-
-function ytEmbed(url) {
-  if (!url) return null;
-  const m = url.match(/(?:youtu\.be\/|v=|\/embed\/)([A-Za-z0-9_-]{11})/);
-  return m ? "https://www.youtube.com/embed/" + m[1] : null;
-}
-
-const P = "bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800";
+const SUBJECT_COLORS = [
+  { grad: "from-violet-600 to-purple-700" },
+  { grad: "from-blue-600 to-cyan-600" },
+  { grad: "from-emerald-500 to-teal-600" },
+  { grad: "from-orange-500 to-amber-500" },
+];
+const pal = (idx) => SUBJECT_COLORS[idx % SUBJECT_COLORS.length];
+const CARD = "bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800";
 const INPUT = "w-full border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-colors";
 
-/* ── PDF Modal ── */
+/* -- PDF Modal -- */
 function PdfModal({ url, title, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
@@ -48,127 +45,253 @@ function PdfModal({ url, title, onClose }) {
   );
 }
 
-/* ── Full-cover Card Detail ── */
-function CardDetail({ card, palette, onBack }) {
-  const [videos, setVideos] = useState([]);
-  const [pdfs, setPdfs] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [pdfModal, setPdfModal] = useState(null);
+/* -- Expandable content card with download -- */
+function ContentCard({ title, content, icon: Icon, grad, borderCls, deleting, onDelete }) {
+  const [open, setOpen] = useState(true);
+  const lines = (content || "").split("\n").filter(l => l.trim());
 
-  useEffect(() => {
-    setLoading(true);
-    const p = card.concept_id ? { concept_id: card.concept_id } : { topic_id: card.topic_id };
-    Promise.all([
-      api.get("/student/materials", { params: { ...p, type: "video", limit: 3 } }),
-      api.get("/student/materials", { params: { ...p, limit: 20 } }),
-    ]).then(([vr, pr]) => {
-      setVideos(vr.data.materials || []);
-      setPdfs((pr.data.materials || []).filter(m => m.type !== "video"));
-    }).catch(() => {}).finally(() => setLoading(false));
-  }, [card]);
-
-  const handleMarkLearned = async () => {
-    const id = card.concept_id || card.topic_id;
-    try { await api.post("/student/materials/" + id + "/mark-learned"); toast.success("Marked as learned!"); }
-    catch { /* noop */ }
+  const handleDownload = () => {
+    const text = `${title}\n${"-".repeat(50)}\n\n` +
+      lines.map(l => l.replace(/^[â€¢\-*]\s*/, "â€¢ ")).join("\n");
+    const blob = new Blob([text], { type: "text/plain" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = title.replace(/[^a-z0-9_\s]/gi, "").trim().replace(/\s+/g, "_") + ".txt";
+    a.click();
+    URL.revokeObjectURL(a.href);
   };
 
-  const shortcutPdf = pdfs.find(p => /shortcut|trick|key/i.test(p.title)) || pdfs[0];
-  const formulaPdf  = pdfs.find(p => /formula|sheet/i.test(p.title)) || (pdfs.length > 1 ? pdfs[1] : null);
-
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-gray-950 p-6">
-      <div className="max-w-5xl mx-auto">
-        <button onClick={onBack}
-          className="flex items-center gap-1.5 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200 mb-5 transition-colors">
-          <ArrowLeft size={15} /> Back to cards
-        </button>
-
-        {/* Banner */}
-        <div className={"rounded-2xl p-6 mb-7 text-white bg-gradient-to-r " + palette.grad}>
-          <p className="text-white/60 text-xs font-bold uppercase tracking-widest mb-1">{card.context}</p>
-          <h2 className="text-2xl font-bold mb-1">{card.name}</h2>
-          {card.description && <p className="text-white/70 text-sm mt-1 max-w-xl">{card.description}</p>}
-          <button onClick={handleMarkLearned}
-            className="mt-4 inline-flex items-center gap-2 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl text-sm font-semibold transition-colors">
-            <CheckCircle size={15} /> Mark as Learned
+    <div className={"rounded-2xl border-2 overflow-hidden " + borderCls}>
+      <div className={"flex items-center justify-between px-5 py-3.5 bg-gradient-to-r " + grad}>
+        <div className="flex items-center gap-2.5">
+          <Icon size={17} className="text-white" />
+          <span className="font-bold text-white text-sm">{title}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={handleDownload} title="Download as text"
+            className="p-1 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors">
+            <Download size={13} />
+          </button>
+          <button onClick={() => setOpen(o => !o)}
+            className="p-1 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors">
+            <ChevronRight size={15} className={"transition-transform " + (open ? "rotate-90" : "")} />
+          </button>
+          <button onClick={onDelete} disabled={deleting}
+            className="p-1 rounded-lg bg-white/20 hover:bg-red-400/60 text-white transition-colors disabled:opacity-40">
+            {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
           </button>
         </div>
+      </div>
+      {open && (
+        <div className="p-5">
+          {lines.length === 0 ? (
+            <p className="text-sm text-gray-400 italic">No content available.</p>
+          ) : (
+            <ul className="space-y-2">
+              {lines.map((line, i) => {
+                const text = line.replace(/^[â€¢\-*]\s*/, "").trim();
+                return text ? (
+                  <li key={i} className="flex items-start gap-2.5 text-sm text-gray-700 dark:text-gray-300">
+                    <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-indigo-500 flex-shrink-0" />
+                    <span>{text}</span>
+                  </li>
+                ) : null;
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
-        {loading ? (
-          <div className="grid grid-cols-3 gap-4">
-            {[...Array(3)].map((_, i) => <div key={i} className="aspect-video bg-gray-200 dark:bg-gray-800 animate-pulse rounded-2xl" />)}
+/* -- Video card: shows real thumbnail when URL is a watch link -- */
+function VideoCard({ material, onDelete, deleting }) {
+  let videoId = null;
+  try {
+    if (material.file_url?.includes("watch?v="))
+      videoId = new URL(material.file_url).searchParams.get("v");
+  } catch {}
+  const thumbnail = videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : null;
+
+  return (
+    <div className={"rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all " + CARD}>
+      <div className="aspect-video relative group overflow-hidden bg-gray-900">
+        {thumbnail ? (
+          <img src={thumbnail} alt={material.title}
+            className="w-full h-full object-cover" loading="lazy" />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-red-600 to-red-800 flex flex-col items-center justify-center px-4">
+            <PlayCircle size={36} className="text-white/80 mb-2" />
+            <p className="text-white/60 text-xs text-center line-clamp-2">{material.description}</p>
+          </div>
+        )}
+        <a href={material.file_url} target="_blank" rel="noreferrer"
+          className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-black/50 transition-all">
+          <span className="flex items-center gap-2 bg-red-600 text-white text-sm font-bold px-5 py-2.5 rounded-xl shadow-lg">
+            <Play size={14} fill="currentColor" />
+            {videoId ? "Watch Video" : "Search YouTube"}
+          </span>
+        </a>
+      </div>
+      <div className="p-3 flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 line-clamp-1">{material.title}</p>
+          <p className="text-xs text-gray-400 line-clamp-1 mt-0.5">{material.description}</p>
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <a href={material.file_url} target="_blank" rel="noreferrer"
+            className="p-1.5 rounded-lg bg-red-50 dark:bg-red-950/30 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors">
+            <ExternalLink size={13} />
+          </a>
+          <button onClick={onDelete} disabled={deleting}
+            className="p-1.5 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-400 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-500 transition-colors disabled:opacity-40">
+            {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* -- Expanded content for a generated topic -- */
+function GeneratedView({ item, palette, onMaterialsUpdate, onRegenerate, regenerating }) {
+  const { context, materials } = item;
+  const [deletingId, setDeletingId] = useState(null);
+
+  const handleDelete = async (id) => {
+    setDeletingId(id);
+    try {
+      await api.delete(`/student/materials/${id}`);
+      onMaterialsUpdate(item.key, materials.filter(m => m.material_id !== id));
+      toast.success("Removed");
+    } catch {
+      toast.error("Failed to remove");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const videos    = materials.filter(m => m.type === "video");
+  const shortcuts = materials.find(m => m.type === "shortcut");
+  const formulas  = materials.find(m => m.type === "formula");
+
+  return (
+    <div className="space-y-8 pt-2">
+      {/* Banner */}
+      <div className={"rounded-2xl p-5 text-white bg-gradient-to-r " + palette.grad}>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <p className="text-white/60 text-xs font-bold uppercase tracking-widest mb-1">Study Materials</p>
+            <h2 className="text-xl font-bold">{context.conceptName || context.topicName}</h2>
+            <p className="text-white/60 text-sm mt-0.5">
+              {context.subjectName}{context.conceptName ? ` â€º ${context.topicName}` : ""}
+            </p>
+          </div>
+          <button onClick={onRegenerate} disabled={regenerating}
+            className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50">
+            {regenerating ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            Regenerate
+          </button>
+        </div>
+      </div>
+
+      {/* Videos */}
+      <div>
+        <div className="flex items-center gap-2.5 mb-4">
+          <div className="w-8 h-8 rounded-xl bg-red-600 flex items-center justify-center">
+            <PlayCircle size={15} className="text-white" />
+          </div>
+          <h3 className="font-bold text-gray-800 dark:text-gray-100 text-lg">Video Tutorials</h3>
+          <span className="text-xs text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
+            {videos.length} videos
+          </span>
+        </div>
+        {videos.length === 0 ? (
+          <div className="rounded-2xl border-2 border-dashed border-red-200 dark:border-red-900 p-10 text-center">
+            <PlayCircle size={28} className="text-red-300 mx-auto mb-2" />
+            <p className="text-sm text-red-400">No videos â€” try regenerating.</p>
           </div>
         ) : (
-          <>
-            {/* Videos */}
-            <div className="mb-8">
-              <div className="flex items-center gap-2.5 mb-4">
-                <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center"><Play size={14} className="text-white" /></div>
-                <h3 className="font-bold text-gray-800 dark:text-gray-100 text-lg">Video Lessons</h3>
-                <span className="text-xs text-gray-400 bg-gray-100 dark:bg-gray-800 dark:text-gray-500 px-2 py-0.5 rounded-full">{videos.length} / 3</span>
-              </div>
-              {videos.length === 0 ? (
-                <div className={"rounded-2xl border-2 border-dashed border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/30 p-10 text-center"}>
-                  <Play size={28} className="text-blue-300 mx-auto mb-2" />
-                  <p className="text-sm text-blue-400">No videos uploaded yet.</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {videos.map((v, i) => {
-                    const emb = ytEmbed(v.file_url);
-                    return (
-                      <div key={v.material_id} className={"rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all " + P}>
-                        {emb
-                          ? <div className="aspect-video bg-black"><iframe src={emb} className="w-full h-full" allowFullScreen title={v.title} /></div>
-                          : <div className="aspect-video bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center"><Play size={32} className="text-white/70" /></div>
-                        }
-                        <div className="p-3">
-                          <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 line-clamp-2">{v.title}</p>
-                          <span className="text-xs text-blue-500 mt-1 inline-block">Video {i + 1}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* PDFs */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {[
-                { label: "Shortcut Keys & Tricks", sub: "Quick reference card",    pdf: shortcutPdf, gradBtn: "from-amber-500 to-orange-500", bdr: "border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30", Icon: Zap,          ec: "text-amber-300" },
-                { label: "Formula Sheet",          sub: "All formulas at a glance",pdf: formulaPdf,  gradBtn: "from-red-500 to-rose-600",    bdr: "border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30",      Icon: FlaskConical,  ec: "text-red-300"   },
-              ].map(({ label, sub, pdf, gradBtn, bdr, Icon, ec }) => (
-                <div key={label} className={"rounded-2xl border-2 p-5 " + bdr}>
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className={"w-10 h-10 rounded-xl bg-gradient-to-br flex items-center justify-center " + gradBtn}>
-                      <Icon size={17} className="text-white" />
-                    </div>
-                    <div>
-                      <p className="font-bold text-sm text-gray-800 dark:text-gray-100">{label}</p>
-                      <p className="text-xs text-gray-400">{sub}</p>
-                    </div>
-                  </div>
-                  {pdf ? (
-                    <>
-                      <p className="text-sm text-gray-700 dark:text-gray-300 font-medium line-clamp-1 mb-3">{pdf.title}</p>
-                      <button onClick={() => setPdfModal({ url: pdf.file_url, title: pdf.title })}
-                        className={"w-full flex items-center justify-center gap-2 text-white text-sm font-semibold py-2.5 rounded-xl hover:opacity-90 transition-opacity bg-gradient-to-r " + gradBtn}>
-                        <FileText size={14} /> Open PDF
-                      </button>
-                    </>
-                  ) : (
-                    <p className={"text-sm text-center py-4 " + ec}>Not uploaded yet</p>
-                  )}
-                </div>
-              ))}
-            </div>
-          </>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {videos.map(v => (
+              <VideoCard key={v.material_id} material={v}
+                deleting={deletingId === v.material_id}
+                onDelete={() => handleDelete(v.material_id)} />
+            ))}
+          </div>
         )}
       </div>
-      {pdfModal && <PdfModal url={pdfModal.url} title={pdfModal.title} onClose={() => setPdfModal(null)} />}
+
+      {/* Shortcuts + Formulas */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        {shortcuts && (
+          <ContentCard
+            title={shortcuts.title} content={shortcuts.description}
+            icon={Zap} grad="from-amber-500 to-orange-500"
+            borderCls="border-amber-200 dark:border-amber-800"
+            deleting={deletingId === shortcuts.material_id}
+            onDelete={() => handleDelete(shortcuts.material_id)}
+          />
+        )}
+        {formulas && (
+          <ContentCard
+            title={formulas.title} content={formulas.description}
+            icon={FlaskConical} grad="from-rose-500 to-pink-600"
+            borderCls="border-rose-200 dark:border-rose-900"
+            deleting={deletingId === formulas.material_id}
+            onDelete={() => handleDelete(formulas.material_id)}
+          />
+        )}
+      </div>
+
+      {/* Mark learned */}
+      <div className={"rounded-2xl p-4 flex items-center gap-4 " + CARD}>
+        <div className={"w-10 h-10 rounded-xl bg-gradient-to-br flex items-center justify-center " + palette.grad}>
+          <CheckCircle size={18} className="text-white" />
+        </div>
+        <div className="flex-1">
+          <p className="font-semibold text-gray-800 dark:text-gray-100 text-sm">Done studying this topic?</p>
+          <p className="text-xs text-gray-400">Mark it as learned to track your progress.</p>
+        </div>
+        <button onClick={async () => {
+          try {
+            const id = context.concept_id || context.topic_id;
+            if (id) await api.post(`/student/materials/${id}/mark-learned`);
+            toast.success("Marked as learned!");
+          } catch {}
+        }} className={"px-4 py-2 rounded-xl text-white text-sm font-semibold bg-gradient-to-r hover:opacity-90 transition-opacity " + palette.grad}>
+          Mark Learned
+        </button>
+      </div>
     </div>
+  );
+}
+
+/* -- History topic pill/card -- */
+function HistoryCard({ item, active, onClick }) {
+  const palette = pal(item.paletteIdx);
+  return (
+    <button onClick={onClick}
+      className={"w-full text-left rounded-2xl p-4 border-2 transition-all hover:-translate-y-0.5 " +
+        (active
+          ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40 shadow-md"
+          : "border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-600 shadow-sm")}>
+      <span className={"inline-flex items-center text-xs font-bold px-2.5 py-0.5 rounded-full mb-2 text-white bg-gradient-to-r " + palette.grad}>
+        {item.context.subjectName}
+      </span>
+      <p className="font-bold text-gray-800 dark:text-gray-100 text-sm leading-tight">
+        {item.context.conceptName || item.context.topicName}
+      </p>
+      {item.context.conceptName && (
+        <p className="text-xs text-gray-400 mt-0.5">{item.context.topicName}</p>
+      )}
+      <div className="flex items-center gap-2 mt-2.5">
+        <span className="text-xs text-gray-400">{item.materials.length} resource{item.materials.length !== 1 ? "s" : ""}</span>
+        {active && <span className="text-xs font-semibold text-indigo-500 ml-auto">Viewing ?</span>}
+      </div>
+    </button>
   );
 }
 
@@ -177,25 +300,53 @@ function CardDetail({ card, palette, onBack }) {
 ===================================================================== */
 export default function StudyMaterials() {
   const [tab, setTab] = useState("materials");
-  const [subjects, setSubjects] = useState([]);
   const [selSubject, setSelSubject] = useState("");
-  const [selTopic, setSelTopic] = useState("");
+  const [selTopic,   setSelTopic]   = useState("");
   const [selConcept, setSelConcept] = useState("");
-  const [concepts, setConcepts] = useState([]);
-  const [cards, setCards] = useState([]);
-  const [generated, setGenerated] = useState(false);
-  const [activeCard, setActiveCard] = useState(null);
-  const [activePalette, setActivePalette] = useState(pal(0));
-  const [notes, setNotes] = useState([]);
+  const [topics,        setTopics]        = useState([]);
+  const [topicsLoading, setTopicsLoading] = useState(false);
+  const [concepts,        setConcepts]        = useState([]);
+  const [conceptsLoading, setConceptsLoading] = useState(false);
+
+  // Generated history: [{key, context, materials, paletteIdx}]
+  const [generatedHistory, setGeneratedHistory] = useState([]);
+  const [activeKey,        setActiveKey]        = useState(null);
+  const [generating,       setGenerating]       = useState(false);
+  const [regeneratingKey,  setRegeneratingKey]  = useState(null);
+
+  const [notes,        setNotes]        = useState([]);
   const [notesLoading, setNotesLoading] = useState(false);
-  const [noteSearch, setNoteSearch] = useState("");
-  const [pdfModal, setPdfModal] = useState(null);
+  const [noteSearch,   setNoteSearch]   = useState("");
+  const [pdfModal,     setPdfModal]     = useState(null);
+
+  const subjectIdx  = SUBJECTS.findIndex(s => s.subject_id === selSubject);
+  const subjectName = SUBJECTS.find(s => s.subject_id === selSubject)?.name || "";
+  const topicName   = topics.find(t => t.topic_id === selTopic)?.name || "";
+  const conceptName = concepts.find(c => c.concept_id === selConcept)?.name || "";
+  const palette     = pal(subjectIdx < 0 ? 0 : subjectIdx);
+
+  const makeKey = (tid, cid) => `${tid}_${cid || "all"}`;
+  const activeItem = generatedHistory.find(h => h.key === activeKey) || null;
 
   useEffect(() => {
-    api.get("/student/subjects")
-      .then(r => setSubjects(r.data.subjects || []))
-      .catch(() => toast.error("Failed to load subjects"));
-  }, []);
+    setSelTopic(""); setSelConcept(""); setTopics([]); setConcepts([]);
+    if (!selSubject) return;
+    setTopicsLoading(true);
+    api.get("/student/smart-topics", { params: { subject_id: selSubject } })
+      .then(r => setTopics(r.data.topics || []))
+      .catch(() => toast.error("Failed to load topics"))
+      .finally(() => setTopicsLoading(false));
+  }, [selSubject]);
+
+  useEffect(() => {
+    setSelConcept(""); setConcepts([]);
+    if (!selTopic) return;
+    setConceptsLoading(true);
+    api.get("/student/smart-concepts", { params: { topic_id: selTopic } })
+      .then(r => setConcepts(r.data.concepts || []))
+      .catch(() => {})
+      .finally(() => setConceptsLoading(false));
+  }, [selTopic]);
 
   useEffect(() => {
     if (tab !== "notes") return;
@@ -206,40 +357,44 @@ export default function StudyMaterials() {
       .finally(() => setNotesLoading(false));
   }, [tab]);
 
-  useEffect(() => {
-    setConcepts([]); setSelConcept(""); setCards([]); setGenerated(false); setActiveCard(null);
-    if (!selTopic) return;
-    api.get("/student/topics/" + selTopic + "/concepts").then(r => setConcepts(r.data.concepts || [])).catch(() => {});
-  }, [selTopic]);
+  const handleMaterialsUpdate = useCallback((key, newMats) => {
+    setGeneratedHistory(prev =>
+      prev.map(item => item.key === key ? { ...item, materials: newMats } : item)
+    );
+  }, []);
 
-  useEffect(() => {
-    setSelTopic(""); setSelConcept(""); setConcepts([]); setCards([]); setGenerated(false); setActiveCard(null);
-  }, [selSubject]);
-
-  useEffect(() => {
-    setCards([]); setGenerated(false); setActiveCard(null);
-  }, [selConcept]);
-
-  const subjectIdx = subjects.findIndex(s => String(s.subject_id) === selSubject);
-  const subjectObj  = subjects[subjectIdx] || null;
-  const topicObj    = (subjectObj?.topics || []).find(t => String(t.topic_id) === selTopic);
-  const conceptObj  = concepts.find(c => String(c.concept_id) === selConcept);
-  const palette     = pal(subjectIdx < 0 ? 0 : subjectIdx);
-
-  const handleGenerate = () => {
-    if (!selSubject) { toast.error("Please select a subject"); return; }
-    setActiveCard(null); setGenerated(false);
-    let result = [];
-    if (selConcept && conceptObj) {
-      result = [{ id: conceptObj.concept_id, concept_id: conceptObj.concept_id, topic_id: topicObj?.topic_id, name: conceptObj.name, description: conceptObj.description, context: topicObj?.name || subjectObj.name }];
-    } else if (selTopic && topicObj) {
-      result = concepts.length > 0
-        ? concepts.map(c => ({ id: c.concept_id, concept_id: c.concept_id, topic_id: topicObj.topic_id, name: c.name, description: c.description, context: topicObj.name }))
-        : [{ id: topicObj.topic_id, topic_id: topicObj.topic_id, name: topicObj.name, description: "", context: subjectObj.name }];
+  const doGenerate = async (forceNew = false, targetKey = null) => {
+    if (!selSubject || !selTopic) { toast.error("Select a subject and topic first"); return; }
+    const key = targetKey || makeKey(selTopic, selConcept);
+    if (forceNew) {
+      setRegeneratingKey(key);
+      const old = generatedHistory.find(h => h.key === key);
+      if (old) {
+        await Promise.all(old.materials.map(m =>
+          api.delete(`/student/materials/${m.material_id}`).catch(() => {})
+        ));
+      }
     } else {
-      result = (subjectObj?.topics || []).map(t => ({ id: t.topic_id, topic_id: t.topic_id, name: t.name, description: "", context: subjectObj.name }));
+      setGenerating(true);
     }
-    setCards(result); setGenerated(true); setActivePalette(palette);
+    try {
+      const body = { subject_id: selSubject, topic_id: selTopic, ...(selConcept ? { concept_id: selConcept } : {}) };
+      const r = await api.post("/student/materials/ai-generate", body);
+      const newItem = {
+        key,
+        context: { subjectName, topicName, conceptName, subject_id: selSubject, topic_id: selTopic, concept_id: selConcept },
+        materials: r.data.materials || [],
+        paletteIdx: subjectIdx < 0 ? 0 : subjectIdx,
+      };
+      setGeneratedHistory(prev => [newItem, ...prev.filter(h => h.key !== key)]);
+      setActiveKey(key);
+      if (r.data.source === "ai") toast.success("Content generated and saved!");
+    } catch {
+      toast.error("Failed to generate materials");
+    } finally {
+      setGenerating(false);
+      setRegeneratingKey(null);
+    }
   };
 
   const filteredNotes = notes.filter(n =>
@@ -248,18 +403,12 @@ export default function StudyMaterials() {
     (n.teacher_name || "").toLowerCase().includes(noteSearch.toLowerCase())
   );
 
-  /* Full-cover detail page */
-  if (activeCard) {
-    return <CardDetail card={activeCard} palette={activePalette} onBack={() => setActiveCard(null)} />;
-  }
-
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-gray-950 p-6">
       <div className="max-w-5xl mx-auto">
-
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Study Materials</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Select subject, topic, concept — then generate study cards.</p>
+          <p className="text-sm text-gray-400 mt-0.5">Choose a subject then topic then concept â€” AI generates videos, shortcuts &amp; formulas.</p>
         </div>
 
         {/* Tabs */}
@@ -273,107 +422,138 @@ export default function StudyMaterials() {
           ))}
         </div>
 
-        {/* ===== MATERIALS TAB ===== */}
+        {/* -- MATERIALS TAB -- */}
         {tab === "materials" && (
-          <div>
-            {/* Form */}
-            <div className={"rounded-2xl shadow-sm p-6 mb-6 " + P}>
+          <div className="space-y-6">
+            {/* Choose Level */}
+            <div className={"rounded-2xl shadow-sm p-6 " + CARD}>
               <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Choose Level</p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
-                {/* Subject */}
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Subject <span className="text-red-400">*</span></label>
+                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">
+                    Subject <span className="text-red-400">*</span>
+                  </label>
                   <div className="relative">
-                    <select value={selSubject} onChange={e => setSelSubject(e.target.value)} className={INPUT + " pr-9 appearance-none cursor-pointer"}>
+                    <select value={selSubject} onChange={e => setSelSubject(e.target.value)}
+                      className={INPUT + " pr-9 appearance-none cursor-pointer"}>
                       <option value="">-- Select Subject --</option>
-                      {subjects.map(s => <option key={s.subject_id} value={s.subject_id}>{s.name}</option>)}
+                      {SUBJECTS.map(s => <option key={s.subject_id} value={s.subject_id}>{s.name}</option>)}
                     </select>
                     <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   </div>
                 </div>
-                {/* Topic */}
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Topic <span className="text-gray-300 dark:text-gray-600">(optional)</span></label>
+                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">
+                    Topic {topicsLoading && <Loader2 size={11} className="inline ml-1 animate-spin text-indigo-400" />}
+                  </label>
                   <div className="relative">
-                    <select value={selTopic} onChange={e => setSelTopic(e.target.value)} disabled={!selSubject} className={INPUT + " pr-9 appearance-none cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"}>
-                      <option value="">-- All Topics --</option>
-                      {(subjectObj?.topics || []).map(t => <option key={t.topic_id} value={t.topic_id}>{t.name}</option>)}
+                    <select value={selTopic} onChange={e => setSelTopic(e.target.value)}
+                      disabled={!selSubject || topicsLoading}
+                      className={INPUT + " pr-9 appearance-none cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"}>
+                      <option value="">-- Select Topic --</option>
+                      {topics.map(t => <option key={t.topic_id} value={t.topic_id}>{t.name}</option>)}
                     </select>
                     <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   </div>
                 </div>
-                {/* Concept */}
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Concept <span className="text-gray-300 dark:text-gray-600">(optional)</span></label>
+                  <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">
+                    Concept <span className="text-gray-300 dark:text-gray-600 font-normal">(optional)</span>
+                    {conceptsLoading && <Loader2 size={11} className="inline ml-1 animate-spin text-indigo-400" />}
+                  </label>
                   <div className="relative">
-                    <select value={selConcept} onChange={e => setSelConcept(e.target.value)} disabled={!selTopic || concepts.length === 0} className={INPUT + " pr-9 appearance-none cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"}>
+                    <select value={selConcept} onChange={e => setSelConcept(e.target.value)}
+                      disabled={!selTopic || conceptsLoading}
+                      className={INPUT + " pr-9 appearance-none cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"}>
                       <option value="">-- All Concepts --</option>
                       {concepts.map(c => <option key={c.concept_id} value={c.concept_id}>{c.name}</option>)}
                     </select>
                     <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   </div>
-                  {selTopic && concepts.length === 0 && <p className="text-xs text-gray-300 mt-1">No concepts for this topic yet</p>}
                 </div>
               </div>
-              <button onClick={handleGenerate} disabled={!selSubject}
-                className={"flex items-center gap-2 text-white font-semibold px-6 py-2.5 rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-sm bg-gradient-to-r " + palette.btn}>
-                <Sparkles size={15} /> Generate Cards
-              </button>
-            </div>
-
-            {/* Cards */}
-            {generated && (
-              <div>
-                <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-3">
-                  {cards.length} Card{cards.length !== 1 ? "s" : ""} — click a card to study
-                </p>
-                {cards.length === 0 ? (
-                  <div className={"rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700 p-14 text-center " + P}>
-                    <p className="text-gray-400 text-sm">No content found for this selection.</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {cards.map((card, idx) => (
-                      <button key={card.id} onClick={() => setActiveCard(card)}
-                        className={"group relative overflow-hidden rounded-2xl border-2 border-gray-100 dark:border-gray-800 p-5 text-left hover:shadow-lg hover:-translate-y-1 transition-all bg-white dark:bg-gray-900"}>
-                        <div className={"absolute top-0 left-0 right-0 h-1 bg-gradient-to-r " + palette.grad} />
-                        <div className={"w-10 h-10 rounded-xl mb-3 flex items-center justify-center bg-gradient-to-br " + palette.grad}>
-                          <span className="text-white font-bold text-sm">{idx + 1}</span>
-                        </div>
-                        <p className="font-bold text-gray-800 dark:text-gray-100 text-sm">{card.name}</p>
-                        {card.description && <p className="text-xs text-gray-400 mt-1.5 line-clamp-2">{card.description}</p>}
-                        <p className="text-xs text-gray-300 dark:text-gray-600 mt-2">{card.context}</p>
-                        <div className="flex items-center gap-3 mt-3">
-                          <span className="flex items-center gap-1 text-xs text-blue-400"><Play size={10} /> Videos</span>
-                          <span className="flex items-center gap-1 text-xs text-red-400"><FileText size={10} /> PDFs</span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
+              <div className="flex items-center gap-4 flex-wrap">
+                <button onClick={() => doGenerate(false)} disabled={!selSubject || !selTopic || generating}
+                  className={"flex items-center gap-2 text-white font-semibold px-6 py-2.5 rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-sm bg-gradient-to-r " + palette.grad}>
+                  {generating
+                    ? <><Loader2 size={15} className="animate-spin" /> Generatingâ€¦</>
+                    : <><Sparkles size={15} /> Generate Study Content</>}
+                </button>
+                {selTopic && (
+                  <span className="flex items-center gap-1.5 text-xs text-gray-400">
+                    <Lightbulb size={13} className="text-amber-400" />
+                    AI generates YouTube videos, shortcuts &amp; formulas â€” stored for next time
+                  </span>
                 )}
               </div>
+            </div>
+
+            {/* Loading skeleton */}
+            {generating && (
+              <div className="space-y-5">
+                <div className="h-24 rounded-2xl bg-gray-200 dark:bg-gray-800 animate-pulse" />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {[0,1,2].map(i => <div key={i} className="h-48 rounded-2xl bg-gray-200 dark:bg-gray-800 animate-pulse" />)}
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="h-64 rounded-2xl bg-gray-200 dark:bg-gray-800 animate-pulse" />
+                  <div className="h-64 rounded-2xl bg-gray-200 dark:bg-gray-800 animate-pulse" />
+                </div>
+              </div>
+            )}
+
+            {/* Generated History Cards */}
+            {!generating && generatedHistory.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 px-1">
+                  <BookMarked size={14} className="text-gray-400" />
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Generated Topics</h3>
+                  <span className="text-xs text-gray-300 dark:text-gray-600">â€” click to view</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {generatedHistory.map(item => (
+                    <HistoryCard key={item.key} item={item}
+                      active={activeKey === item.key}
+                      onClick={() => setActiveKey(prev => prev === item.key ? null : item.key)} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Active generated content */}
+            {!generating && activeItem && (
+              <GeneratedView
+                item={activeItem}
+                palette={pal(activeItem.paletteIdx)}
+                onMaterialsUpdate={handleMaterialsUpdate}
+                regenerating={regeneratingKey === activeItem.key}
+                onRegenerate={() => doGenerate(true, activeItem.key)}
+              />
             )}
           </div>
         )}
 
-        {/* ===== NOTES TAB ===== */}
+        {/* -- NOTES TAB -- */}
         {tab === "notes" && (
           <div>
             <div className="relative mb-4 max-w-md">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input type="text" placeholder="Search notes..." value={noteSearch} onChange={e => setNoteSearch(e.target.value)} className={INPUT + " pl-9"} />
+              <input type="text" placeholder="Search notesâ€¦" value={noteSearch}
+                onChange={e => setNoteSearch(e.target.value)} className={INPUT + " pl-9"} />
             </div>
             {notesLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">{[...Array(6)].map((_, i) => <div key={i} className="h-36 bg-gray-200 dark:bg-gray-800 animate-pulse rounded-2xl" />)}</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {[...Array(6)].map((_, i) => <div key={i} className="h-36 bg-gray-200 dark:bg-gray-800 animate-pulse rounded-2xl" />)}
+              </div>
             ) : filteredNotes.length === 0 ? (
-              <div className={"rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700 p-16 text-center " + P}>
+              <div className={"rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700 p-16 text-center " + CARD}>
                 <StickyNote size={40} className="text-gray-300 mx-auto mb-3" />
                 <p className="text-gray-400 font-medium">No teacher notes available</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredNotes.map(note => (
-                  <div key={note.material_id} className={"rounded-2xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all overflow-hidden " + P}>
+                  <div key={note.material_id} className={"rounded-2xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all overflow-hidden " + CARD}>
                     <div className="h-1.5 bg-gradient-to-r from-amber-400 to-orange-500" />
                     <div className="p-4">
                       <div className="flex items-start gap-3 mb-3">
@@ -413,3 +593,4 @@ export default function StudyMaterials() {
     </div>
   );
 }
+

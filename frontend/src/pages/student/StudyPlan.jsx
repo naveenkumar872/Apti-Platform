@@ -94,8 +94,8 @@ export default function StudyPlan() {
                     : <Circle size={22} className="text-gray-300 dark:text-gray-600 hover:text-emerald-500 transition-colors" />}
                 </button>
                 <div className="flex-1 min-w-0">
-                  <p className={"text-sm font-medium " + (task.is_completed ? "line-through text-gray-400" : "text-gray-800 dark:text-gray-100")}>{task.task_description}</p>
-                  {task.day_label && <p className="text-xs text-gray-400 mt-0.5">{task.day_label}</p>}
+                  <p className={"text-sm font-medium " + (task.is_completed ? "line-through text-gray-400" : "text-gray-800 dark:text-gray-100")}>{task.description}</p>
+                  {(task.week_number || task.day_number) && <p className="text-xs text-gray-400 mt-0.5">Week {task.week_number} · Day {task.day_number} · ~{task.estimated_minutes}min</p>}
                 </div>
                 {task.priority === "high" && (
                   <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400">High</span>

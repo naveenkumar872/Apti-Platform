@@ -259,4 +259,200 @@ async function generateCompanyYearQuestions({ companyName, topics, year, count =
   return result;
 }
 
-module.exports = { generateAIQuestions, generateCompanyYearQuestions };
+// ─────────────────────────────────────────────────────────────────────────────
+// Study content generation
+// ─────────────────────────────────────────────────────────────────────────────
+
+function buildStudyContentPrompt(subject, topic, concept) {
+  const scope = concept ? `the concept "${concept}" within topic "${topic}" of "${subject}"` : `the topic "${topic}" in "${subject}"`;
+  return `You are an expert educator for Indian placement exam preparation (TCS, Infosys, Wipro, Cognizant, etc.).
+
+Generate comprehensive study content for ${scope} covering basic to advanced level.
+
+Return ONLY a valid JSON object. No markdown fences, no text outside the JSON:
+{"youtube_searches":["search query 1","search query 2","search query 3"],"shortcuts_title":"Quick Tricks and Shortcuts","shortcuts":["Basic: trick 1","Basic: trick 2","Intermediate: trick 3","Intermediate: trick 4","Advanced: trick 5","Advanced: trick 6"],"formulas_title":"Key Formulas and Concepts","formulas":["Basic: formula 1","Basic: formula 2","Intermediate: formula 3","Intermediate: formula 4","Advanced: formula 5","Advanced: formula 6"]}
+
+Rules:
+- youtube_searches: exactly 3 search terms — one for basics, one for tricks, one for advanced/practice
+- shortcuts: array of 8-12 single-line tricks ordered from basic to advanced, label each with Basic/Intermediate/Advanced prefix
+- formulas: array of 8-12 single-line formulas/rules ordered from basic to advanced, include actual equations (e.g. SI = P*R*T/100), label with Basic/Intermediate/Advanced
+- NO newlines inside any string value, ASCII only
+- Return ONLY the JSON object`;
+}
+
+/**
+ * Search YouTube for a real video link using the YouTube Data API v3.
+ * Falls back to a YouTube search URL if no API key is configured.
+ */
+async function searchYouTubeVideo(query) {
+  const apiKey = (process.env.YOUTUBE_API_KEY || '').trim();
+  const fallback = {
+    url: `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`,
+    videoId: null,
+    thumbnail: null,
+    channelTitle: null,
+  };
+  if (!apiKey) return { ...fallback, query };
+  try {
+    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&q=${encodeURIComponent(query)}&type=video&relevanceLanguage=en&key=${apiKey}`;
+    const resp = await fetch(searchUrl, { signal: AbortSignal.timeout(8000) });
+    if (!resp.ok) { console.warn(`[YouTube] API returned ${resp.status}`); return { ...fallback, query }; }
+    const data = await resp.json();
+    if (data.items && data.items.length > 0) {
+      const item = data.items[0];
+      const videoId = item.id.videoId;
+      return {
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+        videoId,
+        thumbnail: item.snippet.thumbnails?.high?.url || `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+        channelTitle: item.snippet.channelTitle || '',
+        query,
+      };
+    }
+  } catch (e) {
+    console.warn('[YouTube] search failed:', e.message);
+  }
+  return { ...fallback, query };
+}
+
+function buildTopicsPrompt(subject) {
+  return `You are an expert in Indian placement exam preparation.
+
+List all important topics for the subject "${subject}" commonly tested in TCS, Infosys, Wipro, Cognizant placement aptitude exams.
+
+Return ONLY a valid JSON array of topic name strings (no markdown, no text outside):
+["Topic 1", "Topic 2", "Topic 3", ...]
+
+Rules:
+- Include 8-15 most important topics
+- Use standard academic names
+- Return ONLY the JSON array`;
+}
+
+function buildConceptsPrompt(subject, topic) {
+  return `You are an expert in Indian placement exam preparation.
+
+List all key concepts and subtopics for "${topic}" in "${subject}" commonly tested in placement exams.
+
+Return ONLY a valid JSON array of concept name strings (no markdown, no text outside):
+["Concept 1", "Concept 2", "Concept 3", ...]
+
+Rules:
+- Include 4-10 specific concepts/subtopics
+- Each concept should be a distinct learnable unit
+- Return ONLY the JSON array`;
+}
+
+async function callAI(prompt) {
+  try {
+    const content = await callCerebras(prompt);
+    // Fall back if Cerebras returned empty or clearly non-JSON content
+    if (content && content.includes('{')) {
+      return content;
+    }
+    console.warn('[AI] Cerebras returned unusable content, falling back to SambaNova. Preview:', (content || '').slice(0, 120));
+  } catch (e) {
+    console.warn('[AI] Cerebras threw, falling back to SambaNova:', e.message);
+  }
+  return await callSambaNova(prompt);
+}
+
+function parseJsonArray(raw) {
+  const cleaned = cleanJson(raw);
+  const m = cleaned.match(/\[[\s\S]*\]/);
+  if (!m) throw new Error('No JSON array found');
+  return JSON.parse(m[0]);
+}
+
+// Escape literal control chars inside JSON string values without touching whitespace outside strings
+function sanitizeControlCharsInStrings(jsonStr) {
+  let result = '';
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < jsonStr.length; i++) {
+    const ch = jsonStr[i];
+    if (escaped) { result += ch; escaped = false; continue; }
+    if (ch === '\\' && inString) { result += ch; escaped = true; continue; }
+    if (ch === '"') { inString = !inString; result += ch; continue; }
+    if (inString) {
+      if (ch === '\n') { result += '\\n'; continue; }
+      if (ch === '\r') { result += '\\r'; continue; }
+      if (ch === '\t') { result += '\\t'; continue; }
+    }
+    result += ch;
+  }
+  return result;
+}
+
+function parseJsonObject(raw) {
+  const cleaned = cleanJson(raw);
+  const m = cleaned.match(/\{[\s\S]*\}/);
+  if (!m) {
+    console.error('[AI] parseJsonObject FAIL. cleaned.length:', cleaned.length,
+      '| starts:', JSON.stringify(cleaned.slice(0, 80)),
+      '| ends:', JSON.stringify(cleaned.slice(-80)));
+    throw new Error('No JSON object found');
+  }
+  return JSON.parse(sanitizeControlCharsInStrings(m[0]));
+}
+
+/**
+ * Generate AI topics for a subject
+ * @param {string} subjectName
+ * @returns {Promise<string[]>}
+ */
+async function generateTopicsForSubject(subjectName) {
+  console.log(`[AI] Generating topics for subject: "${subjectName}"`);
+  const content = await callAI(buildTopicsPrompt(subjectName));
+  const topics = parseJsonArray(content);
+  if (!Array.isArray(topics) || topics.length === 0) throw new Error('No topics generated');
+  return topics.filter(t => typeof t === 'string' && t.trim());
+}
+
+/**
+ * Generate AI concepts for a topic
+ * @param {string} subjectName
+ * @param {string} topicName
+ * @returns {Promise<string[]>}
+ */
+async function generateConceptsForTopic(subjectName, topicName) {
+  console.log(`[AI] Generating concepts for topic: "${topicName}" in "${subjectName}"`);
+  const content = await callAI(buildConceptsPrompt(subjectName, topicName));
+  const concepts = parseJsonArray(content);
+  if (!Array.isArray(concepts) || concepts.length === 0) throw new Error('No concepts generated');
+  return concepts.filter(c => typeof c === 'string' && c.trim());
+}
+
+/**
+ * Generate full study content (YouTube searches + shortcuts + formulas)
+ * @param {string} subjectName
+ * @param {string} topicName
+ * @param {string|null} conceptName
+ * @returns {Promise<{youtube_searches, shortcuts_title, shortcuts, formulas_title, formulas}>}
+ */
+async function generateStudyContent(subjectName, topicName, conceptName) {
+  const label = conceptName ? `${subjectName} > ${topicName} > ${conceptName}` : `${subjectName} > ${topicName}`;
+  console.log(`[AI] Generating study content for: "${label}"`);
+  const content = await callAI(buildStudyContentPrompt(subjectName, topicName, conceptName));
+  const raw = parseJsonObject(content);
+  if (!raw.shortcuts || !raw.formulas) throw new Error('Incomplete study content from AI');
+
+  // Normalize: AI may return arrays or strings — always produce bullet-text strings for DB storage
+  const toText = (v) => Array.isArray(v)
+    ? v.filter(Boolean).map(s => `• ${String(s).trim()}`).join('\n')
+    : String(v || '').trim();
+
+  // Resolve each youtube search query into an actual video URL (or search URL fallback)
+  const searches = Array.isArray(raw.youtube_searches) ? raw.youtube_searches.filter(Boolean).slice(0, 3) : [];
+  const videos = await Promise.all(searches.map(q => searchYouTubeVideo(q)));
+
+  return {
+    videos,
+    shortcuts_title: raw.shortcuts_title || 'Quick Tricks & Shortcuts',
+    shortcuts: toText(raw.shortcuts),
+    formulas_title: raw.formulas_title || 'Key Formulas & Concepts',
+    formulas: toText(raw.formulas),
+  };
+}
+
+module.exports = { generateAIQuestions, generateCompanyYearQuestions, generateTopicsForSubject, generateConceptsForTopic, generateStudyContent, searchYouTubeVideo };

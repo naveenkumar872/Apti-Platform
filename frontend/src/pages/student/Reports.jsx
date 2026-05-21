@@ -31,15 +31,15 @@ function DetailPane({ reportId, onClose }) {
   if (loading) return <div className="p-6 text-center text-sm text-gray-400">Loading report...</div>;
   if (!detail) return <div className="p-6 text-center text-sm text-red-400">Could not load report</div>;
 
-  const { report, questions } = detail;
-  const g = grade(report?.score || 0);
+  const { attempt, answers } = detail;
+  const g = grade(attempt?.accuracy_percent || 0);
 
   return (
     <div className={"rounded-2xl border p-6 mb-4 " + C}>
       <div className="flex items-start justify-between mb-4">
         <div>
-          <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">{report?.test_title}</h2>
-          <p className="text-xs text-gray-400 mt-0.5">{new Date(report?.submitted_at).toLocaleString()}</p>
+          <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">{attempt?.title}</h2>
+          <p className="text-xs text-gray-400 mt-0.5">{new Date(attempt?.submitted_at).toLocaleString()}</p>
         </div>
         <button onClick={onClose} className="w-8 h-8 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
           <X size={14} className="text-gray-500" />
@@ -49,9 +49,9 @@ function DetailPane({ reportId, onClose }) {
       {/* Score summary */}
       <div className="grid grid-cols-4 gap-3 mb-5">
         {[
-          { label: "Score", value: `${Math.round(report?.score || 0)}%`, color: "text-indigo-600 dark:text-indigo-400" },
-          { label: "Correct", value: report?.correct_answers, color: "text-emerald-600 dark:text-emerald-400" },
-          { label: "Wrong", value: report?.wrong_answers, color: "text-red-500 dark:text-red-400" },
+          { label: "Score", value: `${Math.round(attempt?.accuracy_percent || 0)}%`, color: "text-indigo-600 dark:text-indigo-400" },
+          { label: "Correct", value: attempt?.score, color: "text-emerald-600 dark:text-emerald-400" },
+          { label: "Wrong", value: attempt?.total_marks != null ? ((attempt.total_marks || 0) - (attempt.score || 0)) : '—', color: "text-red-500 dark:text-red-400" },
           { label: "Grade", value: g.label, color: "" },
         ].map(s => (
           <div key={s.label} className="rounded-xl bg-gray-50 dark:bg-gray-800/60 p-3 text-center">
@@ -64,10 +64,10 @@ function DetailPane({ reportId, onClose }) {
       {/* Accuracy bar */}
       <div className="mb-5">
         <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-          <span>Accuracy</span><span>{Math.round(report?.score || 0)}%</span>
+          <span>Accuracy</span><span>{Math.round(attempt?.accuracy_percent || 0)}%</span>
         </div>
         <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-2">
-          <div className="h-2 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all" style={{ width: `${Math.round(report?.score || 0)}%` }} />
+          <div className="h-2 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all" style={{ width: `${Math.round(attempt?.accuracy_percent || 0)}%` }} />
         </div>
       </div>
 
@@ -79,11 +79,11 @@ function DetailPane({ reportId, onClose }) {
       </button>
 
       {/* Questions accordion */}
-      {questions && questions.length > 0 && (
+      {answers && answers.length > 0 && (
         <div>
-          <h3 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-3">Question Review ({questions.length})</h3>
+          <h3 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-3">Question Review ({answers.length})</h3>
           <div className="space-y-2">
-            {questions.map((q, i) => (
+            {answers.map((q, i) => (
               <div key={q.question_id || i} className={"rounded-xl border overflow-hidden " + (q.is_correct ? "border-emerald-100 dark:border-emerald-900/40" : "border-red-100 dark:border-red-900/40")}>
                 <button onClick={() => setExpanded(expanded === i ? null : i)}
                   className="w-full flex items-center gap-3 p-3 text-left hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
@@ -95,7 +95,7 @@ function DetailPane({ reportId, onClose }) {
                 </button>
                 {expanded === i && (
                   <div className="px-4 pb-4 pt-1 space-y-2">
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Your answer: <span className={"font-semibold " + (q.is_correct ? "text-emerald-600 dark:text-emerald-400" : "text-red-500 dark:text-red-400")}>{q.your_answer || "—"}</span></p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Your answer: <span className={"font-semibold " + (q.is_correct ? "text-emerald-600 dark:text-emerald-400" : "text-red-500 dark:text-red-400")}>{q.selected_answer || "—"}</span></p>
                     {!q.is_correct && <p className="text-xs text-gray-500 dark:text-gray-400">Correct answer: <span className="font-semibold text-emerald-600 dark:text-emerald-400">{q.correct_answer}</span></p>}
                     {q.explanation && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 p-3 bg-gray-50 dark:bg-gray-800/60 rounded-lg">{q.explanation}</p>}
                   </div>
@@ -115,7 +115,7 @@ export default function Reports() {
   const [active, setActive] = useState(null);
 
   useEffect(() => {
-    api.get("/student/reports").then(r => setReports(r.data.reports || [])).catch(() => {}).finally(() => setLoading(false));
+    api.get("/student/reports").then(r => setReports(r.data.attempts || [])).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
   return (
@@ -143,20 +143,20 @@ export default function Reports() {
       ) : (
         <div className="space-y-3">
           {reports.map(r => {
-            const g = grade(r.score || 0);
+            const g = grade(r.accuracy_percent || 0);
             return (
-              <button key={r.attempt_id || r.report_id} onClick={() => setActive(r.attempt_id || r.report_id)}
-                className={"w-full text-left flex items-center gap-4 p-4 rounded-2xl border transition-all hover:shadow-md " + C + (active === (r.attempt_id || r.report_id) ? " ring-2 ring-indigo-400" : "")}>
+              <button key={r.id} onClick={() => setActive(r.id)}
+                className={"w-full text-left flex items-center gap-4 p-4 rounded-2xl border transition-all hover:shadow-md " + C + (active === r.id ? " ring-2 ring-indigo-400" : "")}>
                 <div className={"w-11 h-11 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0 " + g.cls}>
                   {g.label}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{r.test_title}</p>
+                  <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{r.title}</p>
                   <p className="text-xs text-gray-400 mt-0.5">{new Date(r.submitted_at).toLocaleDateString()}</p>
                 </div>
                 <div className="text-right flex-shrink-0">
-                  <p className="text-base font-bold text-gray-800 dark:text-gray-100">{Math.round(r.score)}%</p>
-                  <p className="text-xs text-gray-400">{r.total_questions} Qs</p>
+                  <p className="text-base font-bold text-gray-800 dark:text-gray-100">{Math.round(r.accuracy_percent || 0)}%</p>
+                  <p className="text-xs text-gray-400">{r.type}</p>
                 </div>
               </button>
             );

@@ -1180,6 +1180,222 @@ const getConceptsByTopic = async (req, res, next) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// AI-powered smart topics/concepts/materials
+// ─────────────────────────────────────────────────────────────────────────────
+const { generateTopicsForSubject, generateConceptsForTopic, generateStudyContent } = require('../utils/aiQuestions');
+const { v4: uuidv4 } = require('uuid');
+
+/**
+ * GET /student/smart-topics?subject_id=X
+ * Returns topics from DB. If none exist, AI generates + saves them.
+ */
+const getSmartTopics = async (req, res, next) => {
+  try {
+    const { subject_id } = req.query;
+    if (!subject_id) return res.status(400).json({ error: 'subject_id required' });
+
+    // Get subject name
+    const subjectResult = await query('SELECT name FROM subjects WHERE subject_id = ?', [subject_id]);
+    if (subjectResult.rows.length === 0) return res.status(404).json({ error: 'Subject not found' });
+    const subjectName = subjectResult.rows[0].name;
+
+    // Get existing DB topics
+    const existing = await query('SELECT topic_id, name FROM topics WHERE subject_id = ? ORDER BY name', [subject_id]);
+    const dbTopics = existing.rows;
+
+    // If DB has a healthy set of topics, return them directly
+    if (dbTopics.length >= 5) {
+      return res.json({ topics: dbTopics, source: 'db' });
+    }
+
+    // DB is empty or thin — call AI to fill in / supplement
+    let aiTopicNames = [];
+    try {
+      aiTopicNames = await generateTopicsForSubject(subjectName);
+    } catch {
+      // If AI fails, return whatever we have in DB
+      if (dbTopics.length > 0) return res.json({ topics: dbTopics, source: 'db' });
+      throw new Error('AI topic generation failed and DB is empty');
+    }
+
+    const existingNames = new Set(dbTopics.map(t => t.name.toLowerCase()));
+    const saved = [...dbTopics];
+    for (const name of aiTopicNames) {
+      if (existingNames.has(name.toLowerCase())) continue; // skip duplicates
+      const topic_id = uuidv4();
+      await query('INSERT IGNORE INTO topics (topic_id, subject_id, name) VALUES (?, ?, ?)', [topic_id, subject_id, name]);
+      saved.push({ topic_id, name });
+      existingNames.add(name.toLowerCase());
+    }
+    res.json({ topics: saved.sort((a, b) => a.name.localeCompare(b.name)), source: dbTopics.length > 0 ? 'db+ai' : 'ai' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /student/smart-concepts?topic_id=X
+ * Returns concepts from DB. If none exist, AI generates + saves them.
+ */
+const getSmartConcepts = async (req, res, next) => {
+  try {
+    const { topic_id } = req.query;
+    if (!topic_id) return res.status(400).json({ error: 'topic_id required' });
+
+    // Get topic + subject name
+    const topicResult = await query(
+      `SELECT t.name as topic_name, s.name as subject_name
+       FROM topics t JOIN subjects s ON s.subject_id = t.subject_id
+       WHERE t.topic_id = ?`,
+      [topic_id]
+    );
+    if (topicResult.rows.length === 0) return res.status(404).json({ error: 'Topic not found' });
+    const { topic_name, subject_name } = topicResult.rows[0];
+
+    // Get existing DB concepts
+    const existing = await query('SELECT concept_id, name, description FROM concepts WHERE topic_id = ? ORDER BY name', [topic_id]);
+    const dbConcepts = existing.rows;
+
+    // If DB already has a good set of concepts, return them
+    if (dbConcepts.length >= 4) {
+      return res.json({ concepts: dbConcepts, source: 'db' });
+    }
+
+    // DB is empty or thin — supplement with AI
+    let aiConceptNames = [];
+    try {
+      aiConceptNames = await generateConceptsForTopic(subject_name, topic_name);
+    } catch {
+      if (dbConcepts.length > 0) return res.json({ concepts: dbConcepts, source: 'db' });
+      throw new Error('AI concept generation failed and DB is empty');
+    }
+
+    const existingNames = new Set(dbConcepts.map(c => c.name.toLowerCase()));
+    const saved = [...dbConcepts];
+    for (const name of aiConceptNames) {
+      if (existingNames.has(name.toLowerCase())) continue;
+      const concept_id = uuidv4();
+      await query('INSERT IGNORE INTO concepts (concept_id, topic_id, name) VALUES (?, ?, ?)', [concept_id, topic_id, name]);
+      saved.push({ concept_id, name });
+      existingNames.add(name.toLowerCase());
+    }
+    res.json({ concepts: saved.sort((a, b) => a.name.localeCompare(b.name)), source: dbConcepts.length > 0 ? 'db+ai' : 'ai' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /student/materials/ai-generate
+ * Body: { subject_id, topic_id, concept_id? }
+ * Checks if AI materials exist → if not, generates + saves → returns them
+ */
+const aiGenerateMaterials = async (req, res, next) => {
+  try {
+    const { subject_id, topic_id, concept_id } = req.body;
+    if (!subject_id || !topic_id) return res.status(400).json({ error: 'subject_id and topic_id required' });
+
+    // Resolve names
+    const subjectResult = await query('SELECT name FROM subjects WHERE subject_id = ?', [subject_id]);
+    const topicResult   = await query('SELECT name FROM topics   WHERE topic_id   = ?', [topic_id]);
+    if (subjectResult.rows.length === 0 || topicResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Subject or topic not found' });
+    }
+    const subjectName = subjectResult.rows[0].name;
+    const topicName   = topicResult.rows[0].name;
+    let conceptName = null;
+    if (concept_id) {
+      const cr = await query('SELECT name FROM concepts WHERE concept_id = ?', [concept_id]);
+      if (cr.rows.length > 0) conceptName = cr.rows[0].name;
+    }
+
+    // Check existing AI materials for this exact scope.
+    // We identify AI materials by: uploaded_by IS NULL AND type IN ('shortcut','formula','video').
+    // A shortcut entry existing for the scope means we already generated content.
+    let scopeWhere = 'uploaded_by IS NULL AND type = ? AND topic_id = ? AND is_active = 1';
+    const scopeParams = ['shortcut', topic_id];
+    if (concept_id) { scopeWhere += ' AND concept_id = ?'; scopeParams.push(concept_id); }
+    else { scopeWhere += ' AND concept_id IS NULL'; }
+
+    const shortcutCheck = await query(
+      `SELECT material_id FROM materials WHERE ${scopeWhere} LIMIT 1`,
+      scopeParams
+    );
+
+    if (shortcutCheck.rows.length > 0) {
+      // Return all AI materials for this scope
+      let allWhere = 'uploaded_by IS NULL AND topic_id = ? AND is_active = 1';
+      const allParams = [topic_id];
+      if (concept_id) { allWhere += ' AND concept_id = ?'; allParams.push(concept_id); }
+      else { allWhere += ' AND concept_id IS NULL'; }
+      const allExisting = await query(
+        `SELECT material_id, title, type, file_url, description FROM materials WHERE ${allWhere} ORDER BY type`,
+        allParams
+      );
+      return res.json({ materials: allExisting.rows, source: 'db' });
+    }
+
+    // AI generate
+    const aiContent = await generateStudyContent(subjectName, topicName, conceptName);
+
+    // Save videos — aiContent.videos is [{url, videoId, thumbnail, query}]
+    const resolvedVideos = Array.isArray(aiContent.videos) ? aiContent.videos.slice(0, 3) : [];
+    const materialRows = [];
+
+    // Columns that always exist in the materials table (no source column needed)
+    const insertMaterial = async (mid, title, type, fileUrl, description) => {
+      await query(
+        `INSERT INTO materials (material_id, title, type, file_url, description, subject_id, topic_id, concept_id, visibility, is_active)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'public', 1)`,
+        [mid, title, type, fileUrl, description, subject_id, topic_id, concept_id || null]
+      );
+    };
+
+    for (let i = 0; i < resolvedVideos.length; i++) {
+      const v = resolvedVideos[i];
+      const mid = uuidv4();
+      const title = `${topicName} – Video ${i + 1}`;
+      await insertMaterial(mid, title, 'video', v.url, v.query || '');
+      materialRows.push({ material_id: mid, title, type: 'video', file_url: v.url, description: v.query || '' });
+    }
+
+    // Save shortcut sheet
+    const shortcutId = uuidv4();
+    const shortcutTitle = aiContent.shortcuts_title || `${topicName} – Quick Tricks`;
+    await insertMaterial(shortcutId, shortcutTitle, 'shortcut', '#', aiContent.shortcuts || '');
+    materialRows.push({ material_id: shortcutId, title: shortcutTitle, type: 'shortcut', file_url: '#', description: aiContent.shortcuts || '' });
+
+    // Save formula sheet
+    const formulaId = uuidv4();
+    const formulaTitle = aiContent.formulas_title || `${topicName} – Formula Sheet`;
+    await insertMaterial(formulaId, formulaTitle, 'formula', '#', aiContent.formulas || '');
+    materialRows.push({ material_id: formulaId, title: formulaTitle, type: 'formula', file_url: '#', description: aiContent.formulas || '' });
+
+    res.json({ materials: materialRows, source: 'ai' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * DELETE /student/materials/:id
+ * Only allows deleting AI-generated materials
+ */
+const deleteAIMaterial = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    // Only soft-delete materials that have no uploaded_by (i.e. AI-generated, not admin-uploaded)
+    await query(
+      `UPDATE materials SET is_active = 0 WHERE material_id = ? AND uploaded_by IS NULL`,
+      [id]
+    );
+    res.json({ message: 'Deleted' });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getDashboard, getMaterials, getMaterialById, markLearned, bookmarkMaterial,
   getNotes, startPractice, submitPracticeAnswer, endPractice,
@@ -1187,5 +1403,6 @@ module.exports = {
   getReports, getReportById, generatePlan, getCurrentPlan, completeTask,
   getCompanies, getCompanyById, generateCompanyQuestions, generateTopicQuestions, getLeaderboard,
   addBookmark, getBookmarks, removeBookmark,
-  postDoubt, getDoubts, answerDoubt, getSkillProfile, getSubjects, getConceptsByTopic
+  postDoubt, getDoubts, answerDoubt, getSkillProfile, getSubjects, getConceptsByTopic,
+  getSmartTopics, getSmartConcepts, aiGenerateMaterials, deleteAIMaterial
 };

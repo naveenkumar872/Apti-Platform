@@ -14,11 +14,18 @@ router.get('/dashboard', studentController.getDashboard);
 router.get('/subjects', studentController.getSubjects);
 router.get('/topics/:id/concepts', studentController.getConceptsByTopic);
 
+// AI-powered smart topics / concepts / material generation
+// NOTE: ai-generate must be BEFORE /:id routes to avoid Express param match
+router.get('/smart-topics', studentController.getSmartTopics);
+router.get('/smart-concepts', studentController.getSmartConcepts);
+router.post('/materials/ai-generate', studentController.aiGenerateMaterials);
+
 // Study Materials
 router.get('/materials', studentController.getMaterials);
 router.get('/materials/:id', studentController.getMaterialById);
 router.post('/materials/:id/mark-learned', studentController.markLearned);
 router.post('/materials/:id/bookmark', studentController.bookmarkMaterial);
+router.delete('/materials/:id', studentController.deleteAIMaterial);
 
 // Teacher Notes
 router.get('/notes', studentController.getNotes);

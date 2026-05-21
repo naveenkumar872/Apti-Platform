@@ -5,22 +5,19 @@ import { MessageCircleQuestion, Plus, ChevronDown, ChevronUp, Send } from "lucid
 const C = "bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800";
 const STATUS = { open: "bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400", answered: "bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-400" };
 
-function AnswerSection({ doubtId }) {
-  const [answers, setAnswers] = useState([]);
+function AnswerSection({ doubtId, initialAnswers, onNewAnswer }) {
+  const [answers, setAnswers] = useState(initialAnswers || []);
   const [text, setText] = useState("");
-  const [loading, setLoading] = useState(true);
   const [posting, setPosting] = useState(false);
-
-  useEffect(() => {
-    api.get(`/student/doubts/${doubtId}/answers`).then(r => setAnswers(r.data.answers || [])).catch(() => {}).finally(() => setLoading(false));
-  }, [doubtId]);
 
   const post = async () => {
     if (!text.trim()) return;
     setPosting(true);
     try {
-      const r = await api.post(`/student/doubts/${doubtId}/answers`, { answer_text: text });
-      setAnswers(a => [...a, r.data.answer]);
+      await api.post(`/student/doubts/${doubtId}/answers`, { answer_text: text });
+      const newA = { answer_id: Date.now(), answer_text: text, answered_by_name: "You" };
+      setAnswers(a => [...a, newA]);
+      if (onNewAnswer) onNewAnswer();
       setText("");
     } catch {}
     setPosting(false);
@@ -28,14 +25,14 @@ function AnswerSection({ doubtId }) {
 
   return (
     <div className="mt-4 border-t border-gray-100 dark:border-gray-800 pt-4">
-      {loading ? <p className="text-xs text-gray-400">Loading answers...</p> : answers.length === 0 ? (
+      {answers.length === 0 ? (
         <p className="text-xs text-gray-400 italic">No answers yet. Be the first!</p>
-      ) : (
-        <div className="space-y-2 mb-3">
+          ) : (
+            <div className="space-y-2 mb-3">
           {answers.map(a => (
             <div key={a.answer_id} className="bg-gray-50 dark:bg-gray-800/60 rounded-xl p-3">
               <p className="text-sm text-gray-700 dark:text-gray-200">{a.answer_text}</p>
-              <p className="text-xs text-gray-400 mt-1">{a.author_name} · {new Date(a.created_at).toLocaleDateString()}</p>
+              <p className="text-xs text-gray-400 mt-1">{a.answered_by_name}</p>
             </div>
           ))}
         </div>
@@ -141,7 +138,7 @@ export default function Doubts() {
                   {expanded === d.doubt_id ? <ChevronUp size={14} className="text-gray-500" /> : <ChevronDown size={14} className="text-gray-500" />}
                 </button>
               </div>
-              {expanded === d.doubt_id && <AnswerSection doubtId={d.doubt_id} />}
+                {expanded === d.doubt_id && <AnswerSection doubtId={d.doubt_id} initialAnswers={d.answers || []} />}
             </div>
           ))}
         </div>

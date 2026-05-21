@@ -313,14 +313,14 @@ export default function Reports() {
     <div className="w-full min-h-full flex flex-col">
       {/* Banner */}
       <div className="relative bg-gradient-to-br from-rose-500 via-pink-600 to-purple-600 px-6 pt-8 pb-7 md:px-10 overflow-hidden">
-        <div className="absolute inset-0 opacity-[0.07]"
+        <div className="absolute inset-0 opacity-[0.06] pointer-events-none"
           style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
         <div className="relative">
           <div className="flex items-center gap-2 mb-2">
             <BarChart3 size={15} className="text-white/70" />
             <span className="text-white/60 text-xs font-bold tracking-widest uppercase">Performance</span>
           </div>
-          <h1 className="text-2xl md:text-3xl font-black text-white">Reports</h1>
+          <h1 className="text-2xl md:text-[28px] font-semibold text-white tracking-tight">Reports</h1>
           <p className="text-white/70 text-sm mt-1.5">Review your test scores &amp; insights</p>
         </div>
       </div>

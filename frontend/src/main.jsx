@@ -1,15 +1,15 @@
-﻿import React from 'react'
+import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './index.css'
 
-// Default to dark theme
+// Theme bootstrap — auto-follow system preference on first load, then
+// respect the user's explicit choice once they toggle.
 ;(function () {
-  const t = localStorage.getItem('theme')
-  if (t !== 'light') {
-    document.documentElement.classList.add('dark')
-    if (!t) localStorage.setItem('theme', 'dark')
-  }
+  const stored = localStorage.getItem('theme')
+  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+  const isDark = stored ? stored === 'dark' : prefersDark
+  if (isDark) document.documentElement.classList.add('dark')
 })()
 
 ReactDOM.createRoot(document.getElementById('root')).render(

@@ -91,7 +91,7 @@ export default function Doubts() {
   return (
     <div className="w-full min-h-full flex flex-col">
       <div className="relative bg-gradient-to-br from-violet-600 via-purple-600 to-pink-500 px-6 pt-8 pb-7 md:px-10 overflow-hidden">
-        <div className="absolute inset-0 opacity-[0.07]"
+        <div className="absolute inset-0 opacity-[0.06] pointer-events-none"
           style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
         <div className="relative flex items-start justify-between gap-4">
           <div>
@@ -99,7 +99,7 @@ export default function Doubts() {
               <MessageCircleQuestion size={15} className="text-white/70" />
               <span className="text-white/60 text-xs font-bold tracking-widest uppercase">Community</span>
             </div>
-            <h1 className="text-2xl md:text-3xl font-black text-white">Doubts</h1>
+            <h1 className="text-2xl md:text-[28px] font-semibold text-white tracking-tight">Doubts</h1>
             <p className="text-white/70 text-sm mt-1.5">Ask questions, get peer answers</p>
           </div>
           <button onClick={() => setShowForm(f => !f)}

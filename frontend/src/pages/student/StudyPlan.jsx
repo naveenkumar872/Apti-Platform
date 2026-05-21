@@ -362,7 +362,7 @@ export default function StudyPlan() {
 
       {/* ── Header Banner ── */}
       <div className="relative bg-gradient-to-br from-emerald-500 via-teal-600 to-cyan-600 px-6 pt-8 pb-7 md:px-10 overflow-hidden">
-        <div className="absolute inset-0 opacity-[0.07]"
+        <div className="absolute inset-0 opacity-[0.06] pointer-events-none"
           style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
         <div className="relative flex items-start justify-between gap-4">
           <div className="min-w-0">
@@ -370,7 +370,7 @@ export default function StudyPlan() {
               <CalendarDays size={15} className="text-white/70" />
               <span className="text-white/60 text-xs font-bold tracking-widest uppercase">Study Plan</span>
             </div>
-            <h1 className="text-2xl md:text-3xl font-black text-white truncate">
+            <h1 className="text-2xl md:text-[28px] font-semibold text-white tracking-tight truncate">
               {mainView === "cards"                   && "My Study Plans"}
               {mainView === "detail" && subView === "list"         && `Your Learning Path`}
               {mainView === "detail" && subView === "resources"    && `Resources: ${activeTask?.topic_name}`}

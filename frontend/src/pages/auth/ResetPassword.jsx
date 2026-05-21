@@ -1,11 +1,9 @@
-import React from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Zap } from 'lucide-react';
+import { Lock, AlertCircle, ArrowLeft } from 'lucide-react';
 import api from '../../services/api';
-
-const inputCls = "w-full bg-gray-800 border border-gray-700 text-white placeholder-gray-500 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-colors";
+import AuthShell, { AuthInput, AuthLabel, AuthError, AuthSubmit } from '../../components/auth/AuthShell';
 
 export default function ResetPassword() {
   const navigate = useNavigate();
@@ -16,7 +14,7 @@ export default function ResetPassword() {
   const onSubmit = async (data) => {
     try {
       await api.post('/auth/reset-password', { token, password: data.password });
-      toast.success('Password reset! Please login.');
+      toast.success('Password updated. Please sign in.');
       navigate('/login');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Reset failed');
@@ -24,67 +22,72 @@ export default function ResetPassword() {
   };
 
   if (!token) return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-      <p className="text-red-400">Invalid reset link</p>
-    </div>
+    <AuthShell title="Reset link invalid" showAside={false}>
+      <div className="flex flex-col items-center text-center py-2">
+        <div className="w-12 h-12 rounded-xl bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center mb-4">
+          <AlertCircle size={22} className="text-rose-500" />
+        </div>
+        <p className="text-sm text-slate-600 dark:text-slate-400 mb-6 max-w-xs">
+          This reset link is invalid or has expired. Request a fresh one to continue.
+        </p>
+        <Link to="/forgot-password"
+          className="inline-flex items-center justify-center px-4 py-2.5 rounded-lg bg-violet-600 hover:bg-violet-700 dark:bg-violet-500 dark:hover:bg-violet-400 text-white text-sm font-semibold transition-colors">
+          Request new link
+        </Link>
+      </div>
+    </AuthShell>
   );
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -left-40 w-96 h-96 bg-violet-600/10 rounded-full blur-3xl" />
-        <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl" />
-      </div>
-
-      <div className="relative bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl w-full max-w-md p-8">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 mb-4">
-            <Zap size={22} className="text-white" />
-          </div>
-          <h1 className="text-xl font-black bg-gradient-to-r from-violet-400 to-indigo-400 bg-clip-text text-transparent">AptitudePrep</h1>
+    <AuthShell
+      title="Set a new password"
+      subtitle="Choose a strong password you haven't used here before."
+      showAside={false}
+    >
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+        <div>
+          <AuthLabel>New password</AuthLabel>
+          <AuthInput
+            type="password"
+            icon={Lock}
+            autoComplete="new-password"
+            placeholder="Min 8 characters"
+            error={!!errors.password}
+            {...register('password', {
+              required: 'Password required',
+              minLength: { value: 8, message: 'Min 8 characters' },
+              pattern: { value: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, message: 'Add upper, lower & digit' },
+            })}
+          />
+          <AuthError>{errors.password?.message}</AuthError>
         </div>
 
-        <h2 className="text-xl font-bold text-white mb-6">Set new password</h2>
+        <div>
+          <AuthLabel>Confirm password</AuthLabel>
+          <AuthInput
+            type="password"
+            icon={Lock}
+            autoComplete="new-password"
+            placeholder="Re-enter"
+            error={!!errors.confirm}
+            {...register('confirm', {
+              required: 'Required',
+              validate: (v) => v === watch('password') || 'Passwords do not match',
+            })}
+          />
+          <AuthError>{errors.confirm?.message}</AuthError>
+        </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div>
-            <label className="block text-sm text-gray-400 font-medium mb-1.5">New Password</label>
-            <input
-              type="password"
-              {...register('password', {
-                required: 'Password required',
-                minLength: { value: 8, message: 'Min 8 chars' },
-                pattern: { value: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, message: 'Need upper, lower, digit' },
-              })}
-              className={inputCls}
-              placeholder="••••••••"
-            />
-            {errors.password && <p className="text-red-400 text-xs mt-1">{errors.password.message}</p>}
-          </div>
+        <AuthSubmit loading={isSubmitting} loadingText="Updating" type="submit">
+          Update password
+        </AuthSubmit>
+      </form>
 
-          <div>
-            <label className="block text-sm text-gray-400 font-medium mb-1.5">Confirm Password</label>
-            <input
-              type="password"
-              {...register('confirm', {
-                required: 'Required',
-                validate: (v) => v === watch('password') || 'Passwords do not match',
-              })}
-              className={inputCls}
-              placeholder="••••••••"
-            />
-            {errors.confirm && <p className="text-red-400 text-xs mt-1">{errors.confirm.message}</p>}
-          </div>
-
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full bg-violet-600 hover:bg-violet-500 text-white font-semibold py-2.5 rounded-xl transition-colors disabled:opacity-50"
-          >
-            {isSubmitting ? 'Resetting...' : 'Reset Password'}
-          </button>
-        </form>
-      </div>
-    </div>
+      <Link to="/login"
+        className="mt-6 inline-flex items-center justify-center gap-1.5 w-full text-[13px] font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">
+        <ArrowLeft size={12} />
+        Back to sign in
+      </Link>
+    </AuthShell>
   );
 }

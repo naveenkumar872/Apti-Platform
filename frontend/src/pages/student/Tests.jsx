@@ -247,7 +247,7 @@ export default function Tests() {
   if (result) return (
     <div className="w-full min-h-full flex flex-col">
       <div className="relative bg-gradient-to-br from-violet-600 via-indigo-600 to-blue-600 px-6 pt-8 pb-7 md:px-10 overflow-hidden">
-        <div className="absolute inset-0 opacity-[0.07]"
+        <div className="absolute inset-0 opacity-[0.06] pointer-events-none"
           style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
         <div className="relative flex items-start justify-between gap-4">
           <div>
@@ -255,7 +255,7 @@ export default function Tests() {
               <ClipboardList size={15} className="text-white/70" />
               <span className="text-white/60 text-xs font-bold tracking-widest uppercase">Result</span>
             </div>
-            <h1 className="text-2xl md:text-3xl font-black text-white">Test Complete</h1>
+            <h1 className="text-2xl md:text-[28px] font-semibold text-white tracking-tight">Test Complete</h1>
             <p className="text-white/70 text-sm mt-1.5">Review your performance below</p>
           </div>
           <button
@@ -292,7 +292,7 @@ export default function Tests() {
   return (
     <div className="w-full min-h-full flex flex-col">
       <div className="relative bg-gradient-to-br from-violet-600 via-indigo-600 to-blue-600 px-6 pt-8 pb-7 md:px-10 overflow-hidden">
-        <div className="absolute inset-0 opacity-[0.07]"
+        <div className="absolute inset-0 opacity-[0.06] pointer-events-none"
           style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
         <div className="relative flex items-start justify-between gap-4">
           <div>
@@ -300,7 +300,7 @@ export default function Tests() {
               <ClipboardList size={15} className="text-white/70" />
               <span className="text-white/60 text-xs font-bold tracking-widest uppercase">Assessments</span>
             </div>
-            <h1 className="text-2xl md:text-3xl font-black text-white">Tests</h1>
+            <h1 className="text-2xl md:text-[28px] font-semibold text-white tracking-tight">Tests</h1>
             <p className="text-white/70 text-sm mt-1.5">Scheduled assessments &amp; mock tests</p>
           </div>
           <div className="hidden sm:flex gap-3 flex-shrink-0">

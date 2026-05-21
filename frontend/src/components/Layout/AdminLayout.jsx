@@ -1,22 +1,25 @@
 import { useState, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, ClipboardList, CalendarDays, FileText, Users, BarChart2, LogOut, Sun, Moon } from 'lucide-react';
+import {
+  LayoutDashboard, ClipboardList, CalendarDays, FileText,
+  Users, BarChart2, LogOut, Sun, Moon, Sparkles
+} from 'lucide-react';
 import useAuthStore from '../../stores/authStore';
 import toast from 'react-hot-toast';
 
 const navItems = [
   { to: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/admin/tests', icon: ClipboardList, label: 'Test Builder' },
-  { to: '/admin/questions', icon: CalendarDays, label: 'Study Plans' },
-  { to: '/admin/materials', icon: FileText, label: 'Materials' },
-  { to: '/admin/users', icon: Users, label: 'Users & Batches' },
-  { to: '/admin/reports', icon: BarChart2, label: 'Reports' },
+  { to: '/admin/tests',     icon: ClipboardList,   label: 'Test Builder' },
+  { to: '/admin/questions', icon: CalendarDays,    label: 'Study Plans' },
+  { to: '/admin/materials', icon: FileText,        label: 'Materials' },
+  { to: '/admin/users',     icon: Users,           label: 'Users & Batches' },
+  { to: '/admin/reports',   icon: BarChart2,       label: 'Reports' },
 ];
 
 export default function AdminLayout() {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
-  const [dark, setDark] = useState(() => localStorage.getItem('theme') !== 'light');
+  const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'));
 
   useEffect(() => {
     const html = document.documentElement;
@@ -31,17 +34,24 @@ export default function AdminLayout() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-gray-950 transition-colors duration-300">
-      <aside className="w-64 flex-shrink-0 bg-gray-900 border-r border-gray-800 flex flex-col z-10">
+    <div className="flex h-screen bg-slate-50 dark:bg-[#09090d] transition-colors">
+      <aside className="w-64 flex-shrink-0 flex flex-col z-10
+                        bg-white dark:bg-[#0c0c12]
+                        border-r border-slate-200 dark:border-white/[0.06]">
+
         {/* Logo */}
-        <div className="px-5 py-5 border-b border-gray-800">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
-              <span className="text-white font-black text-sm">A</span>
+        <div className="px-5 py-5 border-b border-slate-200 dark:border-white/[0.06]">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-slate-900 dark:bg-white flex items-center justify-center flex-shrink-0">
+              <Sparkles size={14} className="text-white dark:text-slate-900" strokeWidth={2.5} />
             </div>
             <div>
-              <h1 className="text-sm font-bold text-white leading-none">AptitudePrep</h1>
-              <p className="text-[10px] text-gray-500 mt-0.5 font-medium tracking-widest uppercase">Admin Panel</p>
+              <h1 className="text-[15px] font-semibold text-slate-900 dark:text-white leading-tight tracking-tight">
+                AptitudePrep
+              </h1>
+              <p className="text-[10px] text-slate-500 dark:text-slate-500 mt-0.5 font-medium tracking-[0.16em] uppercase">
+                Admin
+              </p>
             </div>
           </div>
         </div>
@@ -53,43 +63,52 @@ export default function AdminLayout() {
               key={to}
               to={to}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  isActive
-                    ? 'bg-violet-600 text-white shadow-lg shadow-violet-900/40'
-                    : 'text-gray-400 hover:bg-gray-800 hover:text-white'
-                }`
+                'group flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13.5px] font-medium transition-colors ' +
+                (isActive
+                  ? 'bg-slate-100 dark:bg-white/[0.06] text-slate-900 dark:text-white'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100/60 dark:hover:bg-white/[0.03]')
               }
             >
-              <Icon size={17} />
-              {label}
+              {({ isActive }) => (
+                <>
+                  <Icon
+                    size={15}
+                    className={isActive
+                      ? 'text-violet-600 dark:text-violet-400'
+                      : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300'}
+                  />
+                  {label}
+                </>
+              )}
             </NavLink>
           ))}
         </nav>
 
         {/* Footer */}
-        <div className="p-3 border-t border-gray-800 space-y-1">
-          <div className="flex items-center gap-3 px-3 py-2 rounded-xl">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+        <div className="p-3 border-t border-slate-200 dark:border-white/[0.06] space-y-1">
+          <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg">
+            <div className="w-8 h-8 rounded-lg bg-violet-100 dark:bg-violet-500/15 flex items-center justify-center text-violet-700 dark:text-violet-300 text-[13px] font-semibold flex-shrink-0">
               {(user?.name?.[0] || 'A').toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-white truncate">{user?.name}</p>
-              <p className="text-xs text-gray-500 truncate capitalize">{user?.role}</p>
+              <p className="text-[13px] font-semibold text-slate-800 dark:text-slate-100 truncate">{user?.name}</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-500 truncate capitalize">{user?.role}</p>
             </div>
             <button
               onClick={() => setDark(d => !d)}
-              className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-gray-700 transition-colors flex-shrink-0"
-              title="Toggle theme"
+              className="p-1.5 rounded-md text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors flex-shrink-0"
+              title={dark ? 'Switch to light' : 'Switch to dark'}
+              aria-label="Toggle theme"
             >
               {dark ? <Sun size={14} /> : <Moon size={14} />}
             </button>
           </div>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-2 w-full px-3 py-2 rounded-xl text-sm text-gray-400 hover:bg-red-900/30 hover:text-red-400 transition-colors"
+            className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-[13px] font-medium text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/[0.08] transition-colors"
           >
-            <LogOut size={15} />
-            Logout
+            <LogOut size={14} />
+            Sign out
           </button>
         </div>
       </aside>

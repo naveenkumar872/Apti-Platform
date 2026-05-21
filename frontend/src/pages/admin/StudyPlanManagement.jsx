@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
+import { useConfirm } from '../../components/ConfirmDialog';
 import {
   Users, Search, ChevronRight, Sparkles, Plus, Trash2,
   CalendarDays, CheckCircle2, Video, FileText, FlaskConical,
   Target, Loader2, Clock, AlertCircle, Lock, Unlock, X,
   Play, ExternalLink, StickyNote, ArrowLeft, BookOpen, Circle,
-  PlayCircle, Download, Zap
+  PlayCircle, Download, Zap, CheckSquare, Square
 } from 'lucide-react';
 
 const C = 'bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl';
@@ -26,14 +27,21 @@ function getYTId(url) {
 }
 
 /* ── Video thumbnail card (mirrors student side) ── */
-function VideoThumbCard({ material }) {
+function VideoThumbCard({ material, onDelete, selectMode, selected, onSelect }) {
   const vid = getYTId(material.file_url);
   const thumb = vid ? `https://img.youtube.com/vi/${vid}/hqdefault.jpg` : null;
   const href = material.file_url?.startsWith('http') ? material.file_url
     : `https://www.youtube.com/results?search_query=${encodeURIComponent(material.description || material.title)}`;
   return (
-    <div className="rounded-2xl overflow-hidden shadow-sm border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
-      <div className="aspect-video relative group overflow-hidden bg-gray-900">
+    <div
+      className={`rounded-2xl overflow-hidden shadow-sm border bg-white dark:bg-gray-900 transition-all relative group ${
+        selected
+          ? 'border-violet-500 ring-2 ring-violet-500/40'
+          : 'border-gray-100 dark:border-gray-800'
+      } ${selectMode ? 'cursor-pointer' : ''}`}
+      onClick={() => selectMode && onSelect(material.material_id)}
+    >
+      <div className="aspect-video relative overflow-hidden bg-gray-900">
         {thumb ? (
           <img src={thumb} alt={material.title} className="w-full h-full object-cover" loading="lazy" />
         ) : (
@@ -42,12 +50,26 @@ function VideoThumbCard({ material }) {
             <p className="text-white/60 text-xs text-center line-clamp-2">{material.description}</p>
           </div>
         )}
-        <a href={href} target="_blank" rel="noreferrer"
-          className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-black/50 transition-all">
-          <span className="flex items-center gap-2 bg-red-600 text-white text-sm font-bold px-4 py-2 rounded-xl">
-            <Play size={13} fill="currentColor" />{vid ? 'Watch Video' : 'Search YouTube'}
-          </span>
-        </a>
+        {selectMode ? (
+          <div className="absolute top-2 left-2 z-10"><SelectMark selected={selected} /></div>
+        ) : (
+          <>
+            <a href={href} target="_blank" rel="noreferrer"
+              className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-black/50 transition-all">
+              <span className="flex items-center gap-2 bg-red-600 text-white text-sm font-bold px-4 py-2 rounded-xl">
+                <Play size={13} fill="currentColor" />{vid ? 'Watch Video' : 'Search YouTube'}
+              </span>
+            </a>
+            {onDelete && (
+              <button
+                onClick={(e) => { e.stopPropagation(); e.preventDefault(); onDelete(material.material_id); }}
+                className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 hover:bg-red-600 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all z-10"
+                title="Delete from library">
+                <Trash2 size={12} />
+              </button>
+            )}
+          </>
+        )}
       </div>
       <div className="p-3">
         <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 line-clamp-1">{material.title}</p>
@@ -58,10 +80,11 @@ function VideoThumbCard({ material }) {
 }
 
 /* ── Bullet card (mirrors student shortcuts / formulas) ── */
-function BulletCard({ title, content, icon: Icon, grad, borderCls }) {
+function BulletCard({ title, content, icon: Icon, grad, borderCls, materialId, onDelete, selectMode, selected, onSelect }) {
   const [open, setOpen] = useState(true);
   const lines = (content || '').split('\n').filter(l => l.trim());
-  const handleDownload = () => {
+  const handleDownload = (e) => {
+    e.stopPropagation();
     const text = `${title}\n${'-'.repeat(50)}\n\n` + lines.join('\n');
     const blob = new Blob([text], { type: 'text/plain' });
     const a = document.createElement('a');
@@ -70,22 +93,36 @@ function BulletCard({ title, content, icon: Icon, grad, borderCls }) {
     a.click(); URL.revokeObjectURL(a.href);
   };
   return (
-    <div className={'rounded-2xl border-2 overflow-hidden ' + borderCls}>
+    <div
+      className={`rounded-2xl border-2 overflow-hidden transition-all ${
+        selected ? 'border-violet-500 ring-2 ring-violet-500/40' : borderCls
+      } ${selectMode ? 'cursor-pointer' : ''}`}
+      onClick={() => selectMode && materialId && onSelect(materialId)}
+    >
       <div className={'flex items-center justify-between px-5 py-3.5 bg-gradient-to-r ' + grad}>
         <div className="flex items-center gap-2.5">
+          {selectMode && <SelectMark selected={selected} />}
           <Icon size={16} className="text-white" />
           <span className="font-bold text-white text-sm">{title}</span>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={handleDownload} title="Download"
-            className="p-1 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors">
-            <Download size={12} />
-          </button>
-          <button onClick={() => setOpen(o => !o)}
-            className="p-1 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors">
-            <ChevronRight size={14} className={'transition-transform ' + (open ? 'rotate-90' : '')} />
-          </button>
-        </div>
+        {!selectMode && (
+          <div className="flex items-center gap-2">
+            <button onClick={handleDownload} title="Download"
+              className="p-1 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors">
+              <Download size={12} />
+            </button>
+            {onDelete && materialId && (
+              <button onClick={(e) => { e.stopPropagation(); onDelete(materialId); }} title="Delete from library"
+                className="p-1 rounded-lg bg-white/20 hover:bg-red-500/60 text-white transition-colors">
+                <Trash2 size={12} />
+              </button>
+            )}
+            <button onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }}
+              className="p-1 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors">
+              <ChevronRight size={14} className={'transition-transform ' + (open ? 'rotate-90' : '')} />
+            </button>
+          </div>
+        )}
       </div>
       {open && (
         <div className="p-5">
@@ -638,15 +675,36 @@ function AddTaskModal({ planId, defaultWeek, defaultDay, onClose, onAdded }) {
 }
 
 /* ──────────────────────────────────────────────
+   Selection checkbox badge (shown in select mode)
+────────────────────────────────────────────── */
+function SelectMark({ selected }) {
+  return (
+    <span className={`flex items-center justify-center w-6 h-6 rounded-md border-2 transition-colors ${
+      selected
+        ? 'bg-violet-600 border-violet-600 text-white'
+        : 'bg-white/90 dark:bg-gray-900/80 border-gray-300 dark:border-gray-600 text-transparent'
+    }`}>
+      <CheckCircle2 size={14} />
+    </span>
+  );
+}
+
+/* ──────────────────────────────────────────────
    Admin Video Card (red thumbnail, like student side)
 ────────────────────────────────────────────── */
-function AdminVideoCard({ task, onRemove }) {
+function AdminVideoCard({ task, onRemove, selectMode, selected, onSelect }) {
   const ytId = getYTId(task.url);
+  const handleCardClick = (e) => {
+    if (selectMode) { e.preventDefault(); e.stopPropagation(); onSelect(task.task_id); return; }
+    if (task.url) window.open(task.url, '_blank');
+  };
   return (
-    <div className="rounded-2xl overflow-hidden border border-gray-700 group bg-gray-900">
+    <div className={`rounded-2xl overflow-hidden border group bg-gray-900 transition-all ${
+      selected ? 'border-violet-500 ring-2 ring-violet-500/40' : 'border-gray-700'
+    }`}>
       <div
         className="relative bg-red-700 aspect-video flex items-center justify-center overflow-hidden cursor-pointer"
-        onClick={() => task.url && window.open(task.url, '_blank')}
+        onClick={handleCardClick}
       >
         {ytId ? (
           <img
@@ -662,13 +720,18 @@ function AdminVideoCard({ task, onRemove }) {
             <Play size={18} className="text-white ml-0.5" fill="currentColor" />
           </div>
         </div>
-        <button
-          onClick={(e) => { e.stopPropagation(); onRemove(task.task_id); }}
-          className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 hover:bg-red-600 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all z-10"
-        >
-          <Trash2 size={12} />
-        </button>
-        {task.is_completed && (
+        {selectMode && (
+          <div className="absolute top-2 left-2 z-20"><SelectMark selected={selected} /></div>
+        )}
+        {!selectMode && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onRemove(task.task_id); }}
+            className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 hover:bg-red-600 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all z-10"
+          >
+            <Trash2 size={12} />
+          </button>
+        )}
+        {task.is_completed && !selectMode && (
           <div className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/90 text-white text-[10px] font-bold">
             <CheckCircle2 size={10} />Done
           </div>
@@ -704,34 +767,42 @@ const NOTE_COLOR_PALETTES = [
   { grad: 'from-indigo-500 to-violet-600',border: 'border-indigo-200 dark:border-indigo-800',dot: 'bg-indigo-500' },
 ];
 
-function AdminNoteCard({ task, index, onRemove }) {
+function AdminNoteCard({ task, index, onRemove, selectMode, selected, onSelect }) {
   const [open, setOpen] = useState(true);
   const { grad, border, dot } = NOTE_COLOR_PALETTES[index % NOTE_COLOR_PALETTES.length];
   const lines = (task.content || '').split('\n').filter(l => l.trim());
 
   return (
-    <div className={`rounded-2xl border-2 overflow-hidden ${border}`}>
+    <div
+      className={`rounded-2xl border-2 overflow-hidden transition-all ${
+        selected ? 'border-violet-500 ring-2 ring-violet-500/40' : border
+      } ${selectMode ? 'cursor-pointer' : ''}`}
+      onClick={() => selectMode && onSelect(task.task_id)}
+    >
       <div className={`flex items-center justify-between px-5 py-3.5 bg-gradient-to-r ${grad}`}>
         <div className="flex items-center gap-2.5 min-w-0">
+          {selectMode && <SelectMark selected={selected} />}
           <StickyNote size={15} className="text-white flex-shrink-0" />
           <span className="font-bold text-white text-sm truncate">{task.description}</span>
           {task.estimated_minutes && (
             <span className="text-[11px] text-white/70 flex-shrink-0">{task.estimated_minutes} min</span>
           )}
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <button onClick={() => onRemove(task.task_id)}
-            className="p-1 rounded-lg bg-white/20 hover:bg-white/40 text-white transition-colors">
-            <Trash2 size={12} />
-          </button>
-          <button onClick={() => setOpen(o => !o)}
-            className="p-1 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors">
-            <ChevronRight size={14} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
-          </button>
-        </div>
+        {!selectMode && (
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button onClick={(e) => { e.stopPropagation(); onRemove(task.task_id); }}
+              className="p-1 rounded-lg bg-white/20 hover:bg-white/40 text-white transition-colors">
+              <Trash2 size={12} />
+            </button>
+            <button onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }}
+              className="p-1 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors">
+              <ChevronRight size={14} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
+            </button>
+          </div>
+        )}
       </div>
       {open && (
-        <div className="p-5">
+        <div className={`p-5 ${selectMode ? 'pointer-events-none' : ''}`}>
           {lines.length === 0 ? (
             <p className="text-sm text-gray-400 italic">No content added yet.</p>
           ) : (
@@ -762,16 +833,24 @@ function AdminNoteCard({ task, index, onRemove }) {
 /* ──────────────────────────────────────────────
    Admin PDF Card (blue)
 ────────────────────────────────────────────── */
-function AdminPdfCard({ task, onRemove }) {
+function AdminPdfCard({ task, onRemove, selectMode, selected, onSelect }) {
   return (
-    <div className="flex items-center gap-3 px-4 py-3.5 rounded-2xl border-2 border-blue-200 dark:border-blue-800/40 bg-blue-50 dark:bg-blue-900/10 group">
+    <div
+      className={`flex items-center gap-3 px-4 py-3.5 rounded-2xl border-2 transition-all group ${
+        selected
+          ? 'border-violet-500 ring-2 ring-violet-500/40 bg-violet-50 dark:bg-violet-900/10'
+          : 'border-blue-200 dark:border-blue-800/40 bg-blue-50 dark:bg-blue-900/10'
+      } ${selectMode ? 'cursor-pointer' : ''}`}
+      onClick={() => selectMode && onSelect(task.task_id)}
+    >
+      {selectMode && <SelectMark selected={selected} />}
       <div className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center flex-shrink-0">
         <FileText size={16} className="text-blue-600 dark:text-blue-400" />
       </div>
       <div className="flex-1 min-w-0">
         <p className="font-semibold text-sm text-gray-800 dark:text-gray-100 truncate">{task.description}</p>
         {task.content && <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">{task.content}</p>}
-        {task.url && (
+        {task.url && !selectMode && (
           <a href={task.url} target="_blank" rel="noreferrer"
             className="flex items-center gap-1 text-[11px] text-blue-600 dark:text-blue-400 hover:underline mt-0.5 font-medium">
             <ExternalLink size={10} />Open Resource
@@ -783,10 +862,12 @@ function AdminPdfCard({ task, onRemove }) {
           <Clock size={10} />{task.estimated_minutes}m
         </span>
       )}
-      <button onClick={() => onRemove(task.task_id)}
-        className="p-1.5 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0">
-        <Trash2 size={13} />
-      </button>
+      {!selectMode && (
+        <button onClick={(e) => { e.stopPropagation(); onRemove(task.task_id); }}
+          className="p-1.5 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0">
+          <Trash2 size={13} />
+        </button>
+      )}
     </div>
   );
 }
@@ -794,7 +875,7 @@ function AdminPdfCard({ task, onRemove }) {
 /* ──────────────────────────────────────────────
    Admin Task Row (practice / test)
 ────────────────────────────────────────────── */
-function AdminTaskRow({ task, colorClass, onRemove }) {
+function AdminTaskRow({ task, colorClass, onRemove, selectMode, selected, onSelect }) {
   const cfg = TASK_CFG[task.task_type] || TASK_CFG.practice;
   const Icon = cfg.icon;
   const colorMap = {
@@ -803,7 +884,13 @@ function AdminTaskRow({ task, colorClass, onRemove }) {
   };
   const cls = colorMap[colorClass] || colorMap.violet;
   return (
-    <div className={`flex items-center gap-3 px-4 py-3.5 rounded-2xl border-2 ${cls.bg} ${cls.border} group`}>
+    <div
+      className={`flex items-center gap-3 px-4 py-3.5 rounded-2xl border-2 group transition-all ${
+        selected ? 'border-violet-500 ring-2 ring-violet-500/40 bg-violet-50 dark:bg-violet-900/10' : `${cls.bg} ${cls.border}`
+      } ${selectMode ? 'cursor-pointer' : ''}`}
+      onClick={() => selectMode && onSelect(task.task_id)}
+    >
+      {selectMode && <SelectMark selected={selected} />}
       <div className={`w-9 h-9 rounded-xl ${cls.icon} flex items-center justify-center flex-shrink-0`}>
         <Icon size={16} className={cfg.color} />
       </div>
@@ -821,10 +908,12 @@ function AdminTaskRow({ task, colorClass, onRemove }) {
           <CheckCircle2 size={10} />Done
         </span>
       )}
-      <button onClick={() => onRemove(task.task_id)}
-        className="p-1.5 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0">
-        <Trash2 size={13} />
-      </button>
+      {!selectMode && (
+        <button onClick={(e) => { e.stopPropagation(); onRemove(task.task_id); }}
+          className="p-1.5 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0">
+          <Trash2 size={13} />
+        </button>
+      )}
     </div>
   );
 }
@@ -833,6 +922,7 @@ function AdminTaskRow({ task, colorClass, onRemove }) {
    MAIN PAGE
 ══════════════════════════════════════════════ */
 export default function StudyPlanManagement() {
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [students, setStudents] = useState([]);
   const [loadingStudents, setLoadingStudents] = useState(true);
   const [search, setSearch] = useState('');
@@ -849,9 +939,122 @@ export default function StudyPlanManagement() {
 
   const [addTaskModal, setAddTaskModal] = useState(null);
 
+  // Bulk selection (day view)
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());            // plan_task ids
+  const [selectedMaterialIds, setSelectedMaterialIds] = useState(() => new Set()); // material ids
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
   // Materials from the AI library for the selected day's topic
   const [dayMaterials, setDayMaterials] = useState([]);
   const [loadingDayMaterials, setLoadingDayMaterials] = useState(false);
+
+  // Reset selection when navigating between views / students / days
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    setSelectedMaterialIds(new Set());
+  }, [view?.level, view?.week, view?.day, selectedStudent?.user_id]);
+
+  const toggleSelectTask = (taskId) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId); else next.add(taskId);
+      return next;
+    });
+  };
+
+  const toggleSelectMaterial = (materialId) => {
+    setSelectedMaterialIds(prev => {
+      const next = new Set(prev);
+      if (next.has(materialId)) next.delete(materialId); else next.add(materialId);
+      return next;
+    });
+  };
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    setSelectedMaterialIds(new Set());
+  };
+
+  const selectAllInDay = (taskIds, materialIds) => {
+    const allTaskIds = taskIds || [];
+    const allMatIds  = materialIds || [];
+    if (allTaskIds.length === 0 && allMatIds.length === 0) return;
+    const everyTaskSelected = allTaskIds.every(id => selectedIds.has(id));
+    const everyMatSelected  = allMatIds.every(id => selectedMaterialIds.has(id));
+    const allSelected = everyTaskSelected && everyMatSelected;
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (allSelected) allTaskIds.forEach(id => next.delete(id));
+      else allTaskIds.forEach(id => next.add(id));
+      return next;
+    });
+    setSelectedMaterialIds(prev => {
+      const next = new Set(prev);
+      if (allSelected) allMatIds.forEach(id => next.delete(id));
+      else allMatIds.forEach(id => next.add(id));
+      return next;
+    });
+  };
+
+  const handleSingleMaterialDelete = async (materialId) => {
+    const ok = await confirm({
+      title: 'Delete this resource?',
+      message: 'This will remove it from the library for every student.',
+      confirmLabel: 'Delete',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    try {
+      await api.delete(`/admin/materials/${materialId}`);
+      setDayMaterials(prev => prev.filter(m => m.material_id !== materialId));
+      toast.success('Resource deleted');
+    } catch {
+      toast.error('Failed to delete resource');
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!plan) return;
+    const taskIds = Array.from(selectedIds);
+    const matIds  = Array.from(selectedMaterialIds);
+    const total   = taskIds.length + matIds.length;
+    if (total === 0) return;
+    const parts = [];
+    if (taskIds.length) parts.push(`${taskIds.length} plan task${taskIds.length === 1 ? '' : 's'}`);
+    if (matIds.length)  parts.push(`${matIds.length} library resource${matIds.length === 1 ? '' : 's'}`);
+    const bullets = [];
+    if (taskIds.length) bullets.push(`Plan tasks are removed from this student's plan only.`);
+    if (matIds.length)  bullets.push(`Library resources are removed globally (for every student).`);
+    const ok = await confirm({
+      title: `Delete ${parts.join(' and ')}?`,
+      message: 'This action cannot be undone.',
+      bullets,
+      confirmLabel: `Delete ${total}`,
+      tone: 'danger',
+    });
+    if (!ok) return;
+    setBulkDeleting(true);
+    try {
+      if (taskIds.length > 0) {
+        await api.put(`/admin/plans/${plan.plan_id}`, { tasks_to_remove: taskIds });
+        setPlan(p => ({ ...p, tasks: p.tasks.filter(t => !selectedIds.has(t.task_id)) }));
+      }
+      if (matIds.length > 0) {
+        await Promise.all(matIds.map(id => api.delete(`/admin/materials/${id}`)));
+        setDayMaterials(prev => prev.filter(m => !selectedMaterialIds.has(m.material_id)));
+      }
+      toast.success(`${total} item${total === 1 ? '' : 's'} removed`);
+      exitSelectMode();
+    } catch {
+      toast.error('Failed to delete selected items');
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
 
   useEffect(() => {
     api.get('/admin/users?role=student&limit=200')
@@ -900,7 +1103,14 @@ export default function StudyPlanManagement() {
   };
 
   const handleRemoveTask = async (taskId) => {
-    if (!plan || !window.confirm('Remove this task?')) return;
+    if (!plan) return;
+    const ok = await confirm({
+      title: 'Remove this task?',
+      message: "This task will be removed from the student's plan.",
+      confirmLabel: 'Remove',
+      tone: 'danger',
+    });
+    if (!ok) return;
     try {
       await api.delete(`/admin/plans/${plan.plan_id}/tasks/${taskId}`);
       setPlan(p => ({ ...p, tasks: p.tasks.filter(t => t.task_id !== taskId) }));
@@ -1022,10 +1232,52 @@ export default function StudyPlanManagement() {
                   Day {view.day} — {doneCount}/{dayTasks.length} tasks completed by student
                 </p>
               </div>
-              <button onClick={() => setAddTaskModal({ week: view.week, day: view.day })}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold transition flex-shrink-0">
-                <Plus size={12} />Add Task
-              </button>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {!selectMode ? (
+                  <>
+                    {(dayTasks.length > 0 || dayMaterials.length > 0) && (
+                      <button onClick={() => setSelectMode(true)}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-violet-400 hover:text-violet-500 text-gray-500 dark:text-gray-300 text-xs font-semibold transition">
+                        <CheckSquare size={12} />Select
+                      </button>
+                    )}
+                    <button onClick={() => setAddTaskModal({ week: view.week, day: view.day })}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold transition">
+                      <Plus size={12} />Add Task
+                    </button>
+                  </>
+                ) : (() => {
+                  const allTaskIds = dayTasks.map(t => t.task_id);
+                  const allMatIds  = dayMaterials.map(m => m.material_id);
+                  const totalSelected = selectedIds.size + selectedMaterialIds.size;
+                  const allSelected = allTaskIds.every(id => selectedIds.has(id))
+                                   && allMatIds.every(id => selectedMaterialIds.has(id))
+                                   && (allTaskIds.length + allMatIds.length > 0);
+                  return (
+                    <>
+                      <span className="text-xs font-semibold text-gray-500 dark:text-gray-300 px-1">
+                        {totalSelected} selected
+                      </span>
+                      <button onClick={() => selectAllInDay(allTaskIds, allMatIds)}
+                        disabled={allTaskIds.length + allMatIds.length === 0}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-violet-300 dark:border-violet-700 text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 text-xs font-semibold transition disabled:opacity-50">
+                        {allSelected
+                          ? <><Square size={12} />Clear All</>
+                          : <><CheckSquare size={12} />Select All</>}
+                      </button>
+                      <button onClick={handleBulkDelete} disabled={totalSelected === 0 || bulkDeleting}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold transition disabled:opacity-50">
+                        {bulkDeleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                        Delete{totalSelected > 0 ? ` (${totalSelected})` : ''}
+                      </button>
+                      <button onClick={exitSelectMode}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 text-xs font-semibold transition">
+                        <X size={12} />Cancel
+                      </button>
+                    </>
+                  );
+                })()}
+              </div>
             </div>
           </div>
 
@@ -1050,7 +1302,16 @@ export default function StudyPlanManagement() {
                     </span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {libVideos.map(v => <VideoThumbCard key={v.material_id} material={v} />)}
+                    {libVideos.map(v => (
+                      <VideoThumbCard
+                        key={v.material_id}
+                        material={v}
+                        onDelete={handleSingleMaterialDelete}
+                        selectMode={selectMode}
+                        selected={selectedMaterialIds.has(v.material_id)}
+                        onSelect={toggleSelectMaterial}
+                      />
+                    ))}
                   </div>
                 </div>
               )}
@@ -1065,6 +1326,11 @@ export default function StudyPlanManagement() {
                       icon={Zap}
                       grad="from-amber-500 to-orange-500"
                       borderCls="border-amber-200 dark:border-amber-800"
+                      materialId={libShortcut.material_id}
+                      onDelete={handleSingleMaterialDelete}
+                      selectMode={selectMode}
+                      selected={selectedMaterialIds.has(libShortcut.material_id)}
+                      onSelect={toggleSelectMaterial}
                     />
                   )}
                   {libFormula && (
@@ -1074,6 +1340,11 @@ export default function StudyPlanManagement() {
                       icon={FlaskConical}
                       grad="from-rose-500 to-pink-600"
                       borderCls="border-rose-200 dark:border-rose-900"
+                      materialId={libFormula.material_id}
+                      onDelete={handleSingleMaterialDelete}
+                      selectMode={selectMode}
+                      selected={selectedMaterialIds.has(libFormula.material_id)}
+                      onSelect={toggleSelectMaterial}
                     />
                   )}
                 </div>
@@ -1102,7 +1373,10 @@ export default function StudyPlanManagement() {
                 <span className="text-xs text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">{adminVideoTasks.length}</span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {adminVideoTasks.map(t => <AdminVideoCard key={t.task_id} task={t} onRemove={handleRemoveTask} />)}
+                {adminVideoTasks.map(t => (
+                  <AdminVideoCard key={t.task_id} task={t} onRemove={handleRemoveTask}
+                    selectMode={selectMode} selected={selectedIds.has(t.task_id)} onSelect={toggleSelectTask} />
+                ))}
               </div>
             </div>
           )}
@@ -1118,7 +1392,10 @@ export default function StudyPlanManagement() {
                 <span className="text-xs text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">{noteTasks.length}</span>
               </div>
               <div className="space-y-3">
-                {noteTasks.map((t, i) => <AdminNoteCard key={t.task_id} task={t} index={i} onRemove={handleRemoveTask} />)}
+                {noteTasks.map((t, i) => (
+                  <AdminNoteCard key={t.task_id} task={t} index={i} onRemove={handleRemoveTask}
+                    selectMode={selectMode} selected={selectedIds.has(t.task_id)} onSelect={toggleSelectTask} />
+                ))}
               </div>
             </div>
           )}
@@ -1134,7 +1411,10 @@ export default function StudyPlanManagement() {
                 <span className="text-xs text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">{pdfTasks.length}</span>
               </div>
               <div className="space-y-3">
-                {pdfTasks.map(t => <AdminPdfCard key={t.task_id} task={t} onRemove={handleRemoveTask} />)}
+                {pdfTasks.map(t => (
+                  <AdminPdfCard key={t.task_id} task={t} onRemove={handleRemoveTask}
+                    selectMode={selectMode} selected={selectedIds.has(t.task_id)} onSelect={toggleSelectTask} />
+                ))}
               </div>
             </div>
           )}
@@ -1150,7 +1430,10 @@ export default function StudyPlanManagement() {
                 <span className="text-xs text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">{practiceTasks.length}</span>
               </div>
               <div className="space-y-3">
-                {practiceTasks.map(t => <AdminTaskRow key={t.task_id} task={t} colorClass="violet" onRemove={handleRemoveTask} />)}
+                {practiceTasks.map(t => (
+                  <AdminTaskRow key={t.task_id} task={t} colorClass="violet" onRemove={handleRemoveTask}
+                    selectMode={selectMode} selected={selectedIds.has(t.task_id)} onSelect={toggleSelectTask} />
+                ))}
               </div>
             </div>
           )}
@@ -1166,7 +1449,10 @@ export default function StudyPlanManagement() {
                 <span className="text-xs text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">{testTasks.length}</span>
               </div>
               <div className="space-y-3">
-                {testTasks.map(t => <AdminTaskRow key={t.task_id} task={t} colorClass="amber" onRemove={handleRemoveTask} />)}
+                {testTasks.map(t => (
+                  <AdminTaskRow key={t.task_id} task={t} colorClass="amber" onRemove={handleRemoveTask}
+                    selectMode={selectMode} selected={selectedIds.has(t.task_id)} onSelect={toggleSelectTask} />
+                ))}
               </div>
             </div>
           )}
@@ -1298,15 +1584,14 @@ export default function StudyPlanManagement() {
     <div className="flex-1 overflow-y-auto">
       {/* Page header */}
       <div className="bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 px-8 py-7 relative overflow-hidden">
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-2 right-20 w-32 h-32 rounded-full bg-white blur-2xl" />
-        </div>
-        <div className="relative">
+        <div className="absolute inset-0 opacity-[0.06] pointer-events-none"
+          style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
+        <div className="relative animate-fade-in-up">
           <div className="flex items-center gap-2 text-violet-200 text-xs font-semibold uppercase tracking-widest mb-1.5">
             <CalendarDays size={13} />STUDY PLANS
           </div>
-          <h1 className="text-2xl font-black text-white">Plan Management</h1>
-          <p className="text-violet-200 text-sm mt-0.5">View &amp; customize each student's personalized learning plan</p>
+          <h1 className="text-2xl md:text-[28px] font-semibold text-white tracking-tight">Plan Management</h1>
+          <p className="text-violet-100/80 text-sm mt-1">View &amp; customize each student's personalized learning plan</p>
         </div>
       </div>
 
@@ -1402,6 +1687,7 @@ export default function StudyPlanManagement() {
           onAdded={handleTaskAdded}
         />
       )}
+      {confirmDialog}
     </div>
   );
 }

@@ -1,8 +1,9 @@
-import React, { useState, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Mail, Zap } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import api from '../../services/api';
+import AuthShell, { AuthSubmit } from '../../components/auth/AuthShell';
 
 export default function VerifyOTP() {
   const location = useLocation();
@@ -10,6 +11,7 @@ export default function VerifyOTP() {
   const { user_id, email } = location.state || {};
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
   const refs = useRef([]);
 
   const handleChange = (i, val) => {
@@ -24,73 +26,92 @@ export default function VerifyOTP() {
     if (e.key === 'Backspace' && !otp[i] && i > 0) refs.current[i - 1]?.focus();
   };
 
+  const handlePaste = (e) => {
+    const text = (e.clipboardData || window.clipboardData).getData('text').trim();
+    if (!/^\d{6}$/.test(text)) return;
+    e.preventDefault();
+    setOtp(text.split(''));
+    refs.current[5]?.focus();
+  };
+
   const handleVerify = async () => {
     const code = otp.join('');
     if (code.length !== 6) { toast.error('Enter all 6 digits'); return; }
     setLoading(true);
     try {
       await api.post('/auth/verify-otp', { user_id, otp: code });
-      toast.success('Email verified! Please login.');
+      toast.success('Email verified. Please sign in.');
       navigate('/login');
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Invalid OTP');
+      toast.error(err.response?.data?.error || 'Invalid code');
     } finally {
       setLoading(false);
     }
   };
 
   const handleResend = async () => {
+    setResending(true);
     try {
       await api.post('/auth/resend-otp', { user_id });
-      toast.success('OTP resent to ' + email);
+      toast.success('Code resent to ' + email);
     } catch {
-      toast.error('Failed to resend OTP');
+      toast.error('Failed to resend code');
+    } finally {
+      setResending(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -left-40 w-96 h-96 bg-violet-600/10 rounded-full blur-3xl" />
-        <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl" />
+    <AuthShell
+      title="Verify your email"
+      subtitle={email
+        ? <>We sent a 6-digit code to <span className="font-medium text-slate-700 dark:text-slate-200">{email}</span></>
+        : 'Enter the 6-digit code we just sent.'
+      }
+      showAside={false}
+    >
+      <div className="flex gap-2 justify-between mb-6" onPaste={handlePaste}>
+        {otp.map((digit, i) => (
+          <input
+            key={i}
+            ref={(el) => (refs.current[i] = el)}
+            type="text"
+            inputMode="numeric"
+            maxLength={1}
+            value={digit}
+            onChange={(e) => handleChange(i, e.target.value)}
+            onKeyDown={(e) => handleKeyDown(i, e)}
+            className={
+              'w-11 h-12 sm:w-12 sm:h-13 text-center text-lg font-semibold ' +
+              'bg-white dark:bg-white/[0.025] ' +
+              'border ' +
+              (digit
+                ? 'border-violet-500 text-slate-900 dark:text-white'
+                : 'border-slate-200 dark:border-white/10 text-slate-900 dark:text-white') +
+              ' rounded-lg focus:outline-none focus:border-violet-500 ' +
+              'focus:ring-[3px] focus:ring-violet-500/15 ' +
+              'transition-[border-color,box-shadow] duration-150'
+            }
+          />
+        ))}
       </div>
 
-      <div className="relative bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl w-full max-w-md p-8 text-center">
-        <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 mb-5">
-          <Zap size={22} className="text-white" />
-        </div>
-        <h1 className="text-xl font-bold text-white mb-2">Verify your email</h1>
-        <p className="text-gray-500 text-sm mb-1">We sent a 6-digit code to</p>
-        <p className="text-violet-400 text-sm font-semibold mb-7">{email}</p>
+      <AuthSubmit onClick={handleVerify} loading={loading} loadingText="Verifying" type="button">
+        Verify
+      </AuthSubmit>
 
-        <div className="flex gap-2.5 justify-center mb-7">
-          {otp.map((digit, i) => (
-            <input
-              key={i}
-              ref={(el) => (refs.current[i] = el)}
-              type="text"
-              inputMode="numeric"
-              maxLength={1}
-              value={digit}
-              onChange={(e) => handleChange(i, e.target.value)}
-              onKeyDown={(e) => handleKeyDown(i, e)}
-              className="w-12 h-12 text-center text-xl font-bold bg-gray-800 border-2 border-gray-700 text-white rounded-xl focus:outline-none focus:border-violet-500 transition-colors"
-            />
-          ))}
-        </div>
-
+      <p className="mt-6 text-center text-[13px] text-slate-500 dark:text-slate-400">
+        Didn&apos;t get the code?{' '}
         <button
-          onClick={handleVerify}
-          disabled={loading}
-          className="w-full bg-violet-600 hover:bg-violet-500 text-white font-semibold py-2.5 rounded-xl transition-colors disabled:opacity-50 mb-4"
+          type="button"
+          onClick={handleResend}
+          disabled={resending}
+          className="inline-flex items-center gap-1.5 font-semibold text-slate-900 dark:text-white hover:text-violet-600 dark:hover:text-violet-400 transition-colors disabled:opacity-50"
         >
-          {loading ? 'Verifying...' : 'Verify OTP'}
+          {resending && <Loader2 size={11} className="animate-spin" />}
+          Resend
         </button>
-
-        <button onClick={handleResend} className="text-sm text-violet-400 hover:text-violet-300 transition-colors">
-          Resend code
-        </button>
-      </div>
-    </div>
+      </p>
+    </AuthShell>
   );
 }

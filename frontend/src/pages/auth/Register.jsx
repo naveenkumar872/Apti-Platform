@@ -1,14 +1,18 @@
-import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Zap } from 'lucide-react';
+import { User, Mail, Lock, GraduationCap, School, CalendarDays, ArrowRight } from 'lucide-react';
 import api from '../../services/api';
+import AuthShell, { AuthInput, AuthLabel, AuthError, AuthSubmit } from '../../components/auth/AuthShell';
 
 const BRANCHES = ['CSE', 'IT', 'ECE', 'EEE', 'MECH', 'CIVIL', 'MBA', 'Other'];
-const inputCls = "w-full bg-gray-800 border border-gray-700 text-white placeholder-gray-500 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-colors";
-const labelCls = "block text-sm text-gray-400 font-medium mb-1.5";
-const selectCls = "w-full bg-gray-800 border border-gray-700 text-white rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-colors";
+
+const selectCls =
+  'w-full pl-9 pr-3 py-2.5 rounded-lg text-[14px] ' +
+  'bg-white dark:bg-white/[0.025] border border-slate-200 dark:border-white/10 ' +
+  'text-slate-900 dark:text-white ' +
+  'focus:outline-none focus:border-violet-500 dark:focus:border-violet-400 focus:ring-[3px] focus:ring-violet-500/15 ' +
+  'transition-[border-color,box-shadow] duration-150';
 
 export default function Register() {
   const navigate = useNavigate();
@@ -24,7 +28,7 @@ export default function Register() {
         branch: data.branch,
         year: Number(data.year),
       });
-      toast.success('Account created! Please verify your email.');
+      toast.success('Account created. Please verify your email.');
       navigate('/verify-otp', { state: { user_id: res.data.user_id, email: data.email } });
     } catch (err) {
       toast.error(err.response?.data?.error || 'Registration failed');
@@ -32,124 +36,132 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
-      {/* Background glow */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -left-40 w-96 h-96 bg-violet-600/10 rounded-full blur-3xl" />
-        <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl" />
-      </div>
-
-      <div className="relative bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl w-full max-w-lg p-8 my-6">
-        {/* Logo */}
-        <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 mb-4">
-            <Zap size={22} className="text-white" />
-          </div>
-          <h1 className="text-2xl font-black bg-gradient-to-r from-violet-400 to-indigo-400 bg-clip-text text-transparent">AptitudePrep</h1>
-          <p className="text-gray-500 text-sm mt-1">Create your account</p>
+    <AuthShell
+      title="Create your account"
+      subtitle="Start your personalised placement prep in under a minute."
+    >
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <div>
+          <AuthLabel>Full name</AuthLabel>
+          <AuthInput
+            icon={User}
+            autoComplete="name"
+            placeholder="Your full name"
+            error={!!errors.name}
+            {...register('name', { required: 'Name is required', minLength: { value: 2, message: 'Min 2 characters' } })}
+          />
+          <AuthError>{errors.name?.message}</AuthError>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <div>
+          <AuthLabel>Email</AuthLabel>
+          <AuthInput
+            type="email"
+            icon={Mail}
+            autoComplete="email"
+            placeholder="you@college.edu"
+            error={!!errors.email}
+            {...register('email', { required: 'Email is required' })}
+          />
+          <AuthError>{errors.email?.message}</AuthError>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className={labelCls}>Full Name</label>
-            <input
-              {...register('name', { required: 'Name is required', minLength: { value: 2, message: 'Min 2 chars' } })}
-              className={inputCls}
-              placeholder="John Doe"
+            <AuthLabel>Password</AuthLabel>
+            <AuthInput
+              type="password"
+              icon={Lock}
+              autoComplete="new-password"
+              placeholder="Min 8 characters"
+              error={!!errors.password}
+              {...register('password', {
+                required: 'Password required',
+                minLength: { value: 8, message: 'Min 8 characters' },
+                pattern: { value: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, message: 'Add upper, lower & digit' },
+              })}
             />
-            {errors.name && <p className="text-red-400 text-xs mt-1">{errors.name.message}</p>}
+            <AuthError>{errors.password?.message}</AuthError>
           </div>
-
           <div>
-            <label className={labelCls}>Email</label>
-            <input
-              type="email"
-              {...register('email', { required: 'Email is required' })}
-              className={inputCls}
-              placeholder="you@example.com"
+            <AuthLabel>Confirm</AuthLabel>
+            <AuthInput
+              type="password"
+              icon={Lock}
+              autoComplete="new-password"
+              placeholder="Re-enter"
+              error={!!errors.confirmPassword}
+              {...register('confirmPassword', {
+                required: 'Required',
+                validate: (v) => v === watch('password') || 'Passwords do not match',
+              })}
             />
-            {errors.email && <p className="text-red-400 text-xs mt-1">{errors.email.message}</p>}
+            <AuthError>{errors.confirmPassword?.message}</AuthError>
           </div>
+        </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className={labelCls}>Password</label>
-              <input
-                type="password"
-                {...register('password', {
-                  required: 'Password required',
-                  minLength: { value: 8, message: 'Min 8 chars' },
-                  pattern: { value: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, message: 'Need upper, lower, digit' },
-                })}
-                className={inputCls}
-                placeholder="••••••••"
-              />
-              {errors.password && <p className="text-red-400 text-xs mt-1">{errors.password.message}</p>}
-            </div>
-            <div>
-              <label className={labelCls}>Confirm Password</label>
-              <input
-                type="password"
-                {...register('confirmPassword', {
-                  required: 'Required',
-                  validate: (v) => v === watch('password') || 'Passwords do not match',
-                })}
-                className={inputCls}
-                placeholder="••••••••"
-              />
-              {errors.confirmPassword && <p className="text-red-400 text-xs mt-1">{errors.confirmPassword.message}</p>}
-            </div>
-          </div>
+        <div>
+          <AuthLabel>College</AuthLabel>
+          <AuthInput
+            icon={School}
+            placeholder="Institute name"
+            error={!!errors.college}
+            {...register('college', { required: 'College is required' })}
+          />
+          <AuthError>{errors.college?.message}</AuthError>
+        </div>
 
+        <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className={labelCls}>College</label>
-            <input
-              {...register('college', { required: 'College is required' })}
-              className={inputCls}
-              placeholder="Your college name"
-            />
-            {errors.college && <p className="text-red-400 text-xs mt-1">{errors.college.message}</p>}
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className={labelCls}>Branch</label>
+            <AuthLabel>Branch</AuthLabel>
+            <div className="relative">
+              <GraduationCap size={15}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none" />
               <select
                 {...register('branch', { required: 'Required' })}
-                className={selectCls}
+                className={selectCls + (errors.branch ? ' border-rose-400 focus:border-rose-500 focus:ring-rose-500/15' : '')}
               >
-                <option value="">Select branch</option>
+                <option value="">Select</option>
                 {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
               </select>
-              {errors.branch && <p className="text-red-400 text-xs mt-1">{errors.branch.message}</p>}
             </div>
-            <div>
-              <label className={labelCls}>Year</label>
+            <AuthError>{errors.branch?.message}</AuthError>
+          </div>
+          <div>
+            <AuthLabel>Year</AuthLabel>
+            <div className="relative">
+              <CalendarDays size={15}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none" />
               <select
                 {...register('year', { required: 'Required' })}
-                className={selectCls}
+                className={selectCls + (errors.year ? ' border-rose-400 focus:border-rose-500 focus:ring-rose-500/15' : '')}
               >
                 <option value="">Year</option>
                 {[1, 2, 3, 4].map(y => <option key={y} value={y}>Year {y}</option>)}
               </select>
-              {errors.year && <p className="text-red-400 text-xs mt-1">{errors.year.message}</p>}
             </div>
+            <AuthError>{errors.year?.message}</AuthError>
           </div>
+        </div>
 
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full bg-violet-600 hover:bg-violet-500 text-white font-semibold py-2.5 rounded-xl transition-colors disabled:opacity-50"
-          >
-            {isSubmitting ? 'Creating account...' : 'Create Account'}
-          </button>
-        </form>
+        <div className="pt-1">
+          <AuthSubmit loading={isSubmitting} loadingText="Creating account" type="submit">
+            Create account
+            <ArrowRight size={14} />
+          </AuthSubmit>
+          <p className="mt-3 text-[11.5px] text-slate-400 dark:text-slate-500 text-center leading-relaxed">
+            By creating an account you agree to our Terms & Privacy Policy.
+          </p>
+        </div>
+      </form>
 
-        <p className="text-center text-sm text-gray-500 mt-6">
-          Already have an account?{' '}
-          <Link to="/login" className="text-violet-400 font-medium hover:text-violet-300 transition-colors">Sign in</Link>
-        </p>
-      </div>
-    </div>
+      <p className="mt-6 text-center text-[13px] text-slate-500 dark:text-slate-400">
+        Already have an account?{' '}
+        <Link to="/login"
+          className="font-semibold text-slate-900 dark:text-white hover:text-violet-600 dark:hover:text-violet-400 transition-colors">
+          Sign in
+        </Link>
+      </p>
+    </AuthShell>
   );
 }

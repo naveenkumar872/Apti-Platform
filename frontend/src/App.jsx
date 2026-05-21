@@ -27,7 +27,7 @@ import Doubts from './pages/student/Doubts';
 import AdminLayout from './components/Layout/AdminLayout';
 import AdminDashboard from './pages/admin/Dashboard';
 import TestBuilder from './pages/admin/TestBuilder';
-import QuestionBank from './pages/admin/QuestionBank';
+import StudyPlanManagement from './pages/admin/StudyPlanManagement';
 import Materials from './pages/admin/Materials';
 import Users from './pages/admin/Users';
 import AdminReports from './pages/admin/Reports';
@@ -73,7 +73,7 @@ function App() {
           <Route element={<AdminLayout />}>
             <Route path="/admin/dashboard" element={<ErrorBoundary><AdminDashboard /></ErrorBoundary>} />
             <Route path="/admin/tests" element={<ErrorBoundary><TestBuilder /></ErrorBoundary>} />
-            <Route path="/admin/questions" element={<ErrorBoundary><QuestionBank /></ErrorBoundary>} />
+            <Route path="/admin/questions" element={<ErrorBoundary><StudyPlanManagement /></ErrorBoundary>} />
             <Route path="/admin/materials" element={<ErrorBoundary><Materials /></ErrorBoundary>} />
             <Route path="/admin/users" element={<ErrorBoundary><Users /></ErrorBoundary>} />
             <Route path="/admin/reports" element={<ErrorBoundary><AdminReports /></ErrorBoundary>} />

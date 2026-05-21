@@ -391,6 +391,7 @@ export default function Reports() {
                 <tr>
                   <th className="px-6 py-4 font-bold">Student Name</th>
                   <th className="px-6 py-4 font-bold">Test Name</th>
+                  <th className="px-6 py-4 font-bold">Assigned By</th>
                   <th className="px-6 py-4 font-bold">Attempt</th>
                   <th className="px-6 py-4 font-bold">Topic(s)</th>
                   <th className="px-6 py-4 font-bold">Score</th>
@@ -413,6 +414,19 @@ export default function Reports() {
                           </p>
                           <p className="text-[10px] text-gray-400 mt-0.5">{new Date(r.submitted_at).toLocaleDateString()} · {r.type}</p>
                         </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        {r.type === 'practice' ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400">
+                            <BookOpen size={10} /> Self
+                          </span>
+                        ) : r.assigned_by_name ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-lg bg-violet-50 dark:bg-violet-950/30 text-violet-600 dark:text-violet-400">
+                            {r.assigned_by_name}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 text-xs">—</span>
+                        )}
                       </td>
                       <td className="px-6 py-4 font-medium">
                         {r.attempt_number > 0 ? (

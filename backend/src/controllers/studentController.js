@@ -517,8 +517,13 @@ const getAssignedTests = async (req, res, next) => {
          ORDER BY ta3.started_at DESC LIMIT 1
        )
        WHERE t.status IN ('scheduled', 'live', 'completed')
+         AND (
+           (JSON_LENGTH(t.assigned_to->'$.batch_ids') = 0 AND JSON_LENGTH(t.assigned_to->'$.student_ids') = 0)
+           OR (? IS NOT NULL AND JSON_CONTAINS(t.assigned_to->'$.batch_ids', JSON_QUOTE(?)))
+           OR JSON_CONTAINS(t.assigned_to->'$.student_ids', JSON_QUOTE(?))
+         )
        ORDER BY t.start_time DESC`,
-      [student_id, student_id]
+      [student_id, student_id, batch_id, batch_id, student_id]
     );
 
     res.json({ tests: tests.rows });
@@ -581,9 +586,14 @@ const startTest = async (req, res, next) => {
       questions = questions.sort(() => Math.random() - 0.5);
     }
 
+    // Calculate end_time from duration
+    const endTime = new Date(Date.now() + testRow.duration_minutes * 60 * 1000).toISOString();
+
     res.json({
       attempt_id,
+      end_time: endTime,
       test: { ...testRow, questions },
+      questions,
       proctoring_config: testRow.proctoring_config
     });
   } catch (err) {
@@ -595,7 +605,8 @@ const startTest = async (req, res, next) => {
 const saveTestAnswer = async (req, res, next) => {
   try {
     const { id: attempt_id } = req.params;
-    const { question_id, selected_answer, time_taken_seconds, marked_for_review } = req.body;
+    const { question_id, selected_answer: sa, selected_option, time_taken_seconds, marked_for_review } = req.body;
+    const selected_answer = sa || selected_option;
 
     await query(
       `INSERT INTO attempt_answers (attempt_id, question_id, selected_answer, time_taken_seconds, marked_for_review)
@@ -733,6 +744,7 @@ const getReports = async (req, res, next) => {
               t.test_id,
               NULL as method,
               NULL as config,
+              creator.name as assigned_by_name,
               (
                 SELECT COUNT(*)
                 FROM test_attempts ta2
@@ -751,6 +763,7 @@ const getReports = async (req, res, next) => {
        FROM test_attempts ta
        JOIN tests t ON t.test_id = ta.test_id
        JOIN users u ON u.user_id = ta.student_id
+       LEFT JOIN users creator ON creator.user_id = t.created_by
        WHERE ta.student_id = ? AND ta.status = 'submitted'`,
       [student_id]
     );
@@ -770,6 +783,7 @@ const getReports = async (req, res, next) => {
               NULL as test_id,
               ps.method,
               ps.config,
+              u.name as assigned_by_name,
               (
                 SELECT COUNT(*)
                 FROM practice_sessions ps2

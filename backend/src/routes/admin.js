@@ -51,7 +51,9 @@ router.get('/reports/students/:id', adminController.getStudentReport);
 
 // Study Plans
 router.get('/plans/:student_id', adminController.getStudentPlan);
+router.post('/plans/:student_id/generate', adminController.adminGeneratePlan);
 router.put('/plans/:plan_id', adminController.updatePlan);
+router.delete('/plans/:plan_id/tasks/:task_id', adminController.deletePlanTask);
 
 // Proctoring Violations
 router.get('/violations', adminController.getViolations);

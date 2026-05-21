@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, ClipboardList, HelpCircle, FileText, Users, BarChart2, LogOut, Sun, Moon } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, CalendarDays, FileText, Users, BarChart2, LogOut, Sun, Moon } from 'lucide-react';
 import useAuthStore from '../../stores/authStore';
 import toast from 'react-hot-toast';
 
 const navItems = [
   { to: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/admin/tests', icon: ClipboardList, label: 'Test Builder' },
-  { to: '/admin/questions', icon: HelpCircle, label: 'Question Bank' },
+  { to: '/admin/questions', icon: CalendarDays, label: 'Study Plans' },
   { to: '/admin/materials', icon: FileText, label: 'Materials' },
   { to: '/admin/users', icon: Users, label: 'Users & Batches' },
   { to: '/admin/reports', icon: BarChart2, label: 'Reports' },

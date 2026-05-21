@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { Plus, Search, UserCheck, UserX, Users as UsersIcon, TrendingUp, ClipboardList, Award } from 'lucide-react';
+import { Plus, Search, UserCheck, UserX, Users as UsersIcon, TrendingUp, ClipboardList, Award, Trash2 } from 'lucide-react';
 
 const BRANCHES = ['Computer Science', 'Information Technology', 'Electronics', 'Mechanical', 'Civil', 'Electrical', 'Other'];
 const ROLES = ['student', 'teacher'];
@@ -150,6 +150,24 @@ export default function Users() {
     } catch { toast.error('Failed'); }
   };
 
+  const deleteUser = async (user) => {
+    if (!window.confirm(`Delete "${user.name}"? This cannot be undone.`)) return;
+    try {
+      await api.delete(`/admin/users/${user.user_id}`);
+      setUsers(prev => prev.filter(u => u.user_id !== user.user_id));
+      toast.success('User deleted');
+    } catch { toast.error('Failed to delete user'); }
+  };
+
+  const deleteBatch = async (batch) => {
+    if (!window.confirm(`Delete batch "${batch.name}"? This cannot be undone.`)) return;
+    try {
+      await api.delete(`/admin/batches/${batch.batch_id}`);
+      setBatches(prev => prev.filter(b => b.batch_id !== batch.batch_id));
+      toast.success('Batch deleted');
+    } catch { toast.error('Failed to delete batch'); }
+  };
+
   const roleColors = {
     student: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
     teacher: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
@@ -221,24 +239,77 @@ export default function Users() {
                 placeholder="Search users..." />
             </div>
             {loading ? (
-              <div className="space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="h-16 bg-gray-200 dark:bg-gray-800 animate-pulse rounded-2xl" />)}</div>
+              <div className="space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="h-14 bg-gray-200 dark:bg-gray-800 animate-pulse rounded-2xl" />)}</div>
+            ) : users.length === 0 ? (
+              <p className="text-center text-gray-400 py-10 text-sm">No users found</p>
             ) : (
-              <div className="space-y-2">
-                {users.map(u => (
-                  <div key={u.user_id} className={C + " p-4 shadow-sm flex items-center gap-4"}>
-                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-400 to-indigo-500 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
-                      {u.name.charAt(0)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{u.name}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{u.email}</p>
-                    </div>
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${roleColors[u.role] || 'bg-gray-100 text-gray-600'}`}>{u.role}</span>
-                    <button onClick={() => toggleActive(u)} className={`p-1.5 rounded-lg transition-colors ${u.is_active ? 'text-green-600 hover:bg-green-50 dark:hover:bg-green-950/30' : 'text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30'}`}>
-                      {u.is_active ? <UserCheck size={16} /> : <UserX size={16} />}
-                    </button>
-                  </div>
-                ))}
+              <div className={C + ' shadow-sm overflow-hidden'}>
+                <div className="px-5 py-3 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                  <h2 className="font-semibold text-gray-800 dark:text-gray-100">All Users</h2>
+                  <span className="text-xs text-gray-400">{users.length} users</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 dark:bg-gray-800">
+                      <tr>
+                        <th className="text-left px-5 py-3 text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wide">#</th>
+                        <th className="text-left px-5 py-3 text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wide">User</th>
+                        <th className="text-left px-5 py-3 text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wide">Role</th>
+                        <th className="text-left px-5 py-3 text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wide">Batch</th>
+                        <th className="text-left px-5 py-3 text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wide">Branch / Year</th>
+                        <th className="text-left px-5 py-3 text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wide">Status</th>
+                        <th className="px-5 py-3"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                      {users.map((u, idx) => (
+                        <tr key={u.user_id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors group">
+                          <td className="px-5 py-3.5 text-gray-400 dark:text-gray-500 text-xs font-medium">{idx + 1}</td>
+                          <td className="px-5 py-3.5">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
+                                {u.name.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-semibold text-gray-800 dark:text-gray-100 truncate">{u.name}</p>
+                                <p className="text-xs text-gray-400 truncate">{u.email}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <span className={`text-xs px-2.5 py-1 rounded-full font-semibold capitalize ${roleColors[u.role] || 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>
+                              {u.role}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5">
+                            {u.batch_name
+                              ? <span className="text-xs bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 px-2.5 py-1 rounded-full font-medium">{u.batch_name}</span>
+                              : <span className="text-xs text-gray-400">—</span>}
+                          </td>
+                          <td className="px-5 py-3.5 text-gray-600 dark:text-gray-400 text-xs">
+                            {u.branch || '—'}{u.year ? ` · Year ${u.year}` : ''}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <button onClick={() => toggleActive(u)}
+                              className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-semibold transition-colors ${
+                                u.is_active
+                                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200'
+                                  : 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200'
+                              }`}>
+                              {u.is_active ? <><UserCheck size={11} /> Active</> : <><UserX size={11} /> Inactive</>}
+                            </button>
+                          </td>
+                          <td className="px-5 py-3.5 text-right">
+                            <button onClick={() => deleteUser(u)}
+                              className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors opacity-0 group-hover:opacity-100">
+                              <Trash2 size={14} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </>
@@ -246,18 +317,59 @@ export default function Users() {
 
         {tab === 'batches' && (
           loading ? (
-            <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-20 bg-gray-200 dark:bg-gray-800 animate-pulse rounded-2xl" />)}</div>
+            <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-14 bg-gray-200 dark:bg-gray-800 animate-pulse rounded-2xl" />)}</div>
           ) : batches.length === 0 ? (
-            <p className="text-center text-gray-400 py-10">No batches yet</p>
+            <p className="text-center text-gray-400 py-10 text-sm">No batches yet</p>
           ) : (
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-              {batches.map(b => (
-                <div key={b.batch_id} className={C + " p-4 shadow-sm"}>
-                  <p className="font-semibold text-gray-800 dark:text-gray-100">{b.name}</p>
-                  {b.description && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{b.description}</p>}
-                  <p className="text-xs text-gray-400 mt-2">{b.student_count ?? 0} students</p>
-                </div>
-              ))}
+            <div className={C + ' shadow-sm overflow-hidden'}>
+              <div className="px-5 py-3 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                <h2 className="font-semibold text-gray-800 dark:text-gray-100">All Batches</h2>
+                <span className="text-xs text-gray-400">{batches.length} batches</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 dark:bg-gray-800">
+                    <tr>
+                      <th className="text-left px-5 py-3 text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wide">#</th>
+                      <th className="text-left px-5 py-3 text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wide">Batch Name</th>
+                      <th className="text-left px-5 py-3 text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wide">Description</th>
+                      <th className="text-left px-5 py-3 text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wide">Students</th>
+                      <th className="text-left px-5 py-3 text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wide">Created</th>
+                      <th className="px-5 py-3"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {batches.map((b, idx) => (
+                      <tr key={b.batch_id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors group">
+                        <td className="px-5 py-3.5 text-gray-400 dark:text-gray-500 text-xs font-medium">{idx + 1}</td>
+                        <td className="px-5 py-3.5">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
+                              {b.name.charAt(0).toUpperCase()}
+                            </div>
+                            <p className="font-semibold text-gray-800 dark:text-gray-100">{b.name}</p>
+                          </div>
+                        </td>
+                        <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs">{b.description || '—'}</td>
+                        <td className="px-5 py-3.5">
+                          <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-2.5 py-1 rounded-full font-medium">
+                            {b.student_count ?? 0} students
+                          </span>
+                        </td>
+                        <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs">
+                          {b.created_at ? new Date(b.created_at).toLocaleDateString() : '—'}
+                        </td>
+                        <td className="px-5 py-3.5 text-right">
+                          <button onClick={() => deleteBatch(b)}
+                            className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors opacity-0 group-hover:opacity-100">
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )
         )}

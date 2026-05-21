@@ -53,7 +53,7 @@ function Timer({ endTime, onExpire }) {
 }
 
 function TestInterface({ test, attempt, onSubmit }) {
-  const questions = attempt?.questions || [];
+  const questions = attempt?.questions || attempt?.test?.questions || [];
   const [answers, setAnswers] = useState({});
   const [idx, setIdx] = useState(0);
   const [submitting, setSubmitting] = useState(false);
@@ -61,7 +61,7 @@ function TestInterface({ test, attempt, onSubmit }) {
 
   const answer = async (qid, opt) => {
     setAnswers(a => ({ ...a, [qid]: opt }));
-    try { await api.post(`/student/tests/attempts/${attempt.attempt_id}/answer`, { question_id: qid, selected_option: opt }); } catch {}
+    try { await api.post(`/student/tests/attempts/${attempt.attempt_id}/answer`, { question_id: qid, selected_answer: opt }); } catch {}
   };
 
   const submit = async () => {
@@ -72,7 +72,12 @@ function TestInterface({ test, attempt, onSubmit }) {
   };
 
   const q = questions[idx];
-  const opts = q ? [["A", q.option_a], ["B", q.option_b], ["C", q.option_c], ["D", q.option_d]].filter(o => o[1]) : [];
+  // Support both {id, text} options array and flat option_a/b/c/d
+  const opts = q ? (
+    Array.isArray(q.options) && q.options.length > 0
+      ? q.options.map(o => [o.id, o.text])
+      : [["A", q.option_a], ["B", q.option_b], ["C", q.option_c], ["D", q.option_d]]
+  ).filter(([, text]) => text) : [];
   const answered = Object.keys(answers).length;
 
   return (
@@ -97,7 +102,7 @@ function TestInterface({ test, attempt, onSubmit }) {
         <div className={"flex-1 rounded-2xl border p-6 overflow-auto " + C}>
           <div className="flex items-center justify-between mb-4">
             <span className="text-xs font-bold text-gray-400">Q{idx + 1} of {questions.length}</span>
-            {q?.difficulty && <span className={"text-xs font-semibold px-2 py-0.5 rounded-full " + (q.difficulty === "hard" ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" : q.difficulty === "medium" ? "bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400" : "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400")}>{q.difficulty}</span>}
+            {q?.difficulty && <span className={"text-xs font-semibold px-2 py-0.5 rounded-full " + (q.difficulty === "hard" || q.difficulty === 5 ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" : q.difficulty === "medium" || q.difficulty === 3 ? "bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400" : "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400")}>{typeof q.difficulty === 'number' ? (q.difficulty >= 4 ? 'hard' : q.difficulty >= 2 ? 'medium' : 'easy') : q.difficulty}</span>}
           </div>
           <p className="text-base font-semibold text-gray-800 dark:text-gray-100 mb-5">{q?.question_text}</p>
           <div className="space-y-2.5">
@@ -156,16 +161,44 @@ function TestInterface({ test, attempt, onSubmit }) {
 }
 
 function SubmittedView({ result, onBack }) {
-  const score = result?.score || 0;
+  const score = result?.score ?? 0;
+  const total = result?.total_marks ?? 0;
+  const accuracy = result?.accuracy_percent ?? 0;
+  const correct = result?.correct_count ?? 0;
+  const totalAnswered = result?.total_answered ?? 0;
+  const percentage = total > 0 ? Math.round((score / total) * 100) : Math.round(accuracy);
+
   return (
-    <div className="max-w-md mx-auto text-center">
-      <div className={"rounded-2xl border p-8 " + C}>
-        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center mx-auto mb-4 shadow-xl">
-          <span className="text-3xl font-black text-white">{Math.round(score)}</span>
+    <div className="max-w-lg mx-auto">
+      <div className={"rounded-2xl border p-8 text-center " + C}>
+        {/* Score circle */}
+        <div className="w-24 h-24 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex flex-col items-center justify-center mx-auto mb-5 shadow-xl">
+          <span className="text-3xl font-black text-white leading-none">{percentage}%</span>
+          <span className="text-white/70 text-[10px] font-semibold">SCORE</span>
         </div>
         <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-1">Test Submitted!</h2>
-        <p className="text-gray-400 text-sm mb-5">Your score: {Math.round(score)}%</p>
-        <button onClick={onBack} className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-bold hover:opacity-90 transition-opacity">
+        <p className="text-gray-400 text-sm mb-6">Great effort. Review your performance below.</p>
+
+        {/* Stats row */}
+        <div className="grid grid-cols-3 gap-3 mb-6">
+          {[
+            { label: 'Marks', value: `${score}/${total}` },
+            { label: 'Accuracy', value: `${Math.round(accuracy)}%` },
+            { label: 'Correct', value: `${correct}/${totalAnswered || correct + (result?.total_questions || 0)}` },
+          ].map(({ label, value }) => (
+            <div key={label} className="bg-gray-50 dark:bg-gray-800 rounded-xl py-3 px-2">
+              <p className="text-base font-bold text-gray-800 dark:text-gray-100">{value}</p>
+              <p className="text-xs text-gray-400 mt-0.5">{label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Performance indicator */}
+        <div className={`rounded-xl py-3 px-4 mb-6 text-sm font-semibold ${percentage >= 80 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400' : percentage >= 60 ? 'bg-yellow-50 text-yellow-700 dark:bg-yellow-950/30 dark:text-yellow-400' : 'bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400'}`}>
+          {percentage >= 80 ? '🎉 Excellent! You scored above 80%.' : percentage >= 60 ? '👍 Good attempt. Aim for 80%+!' : '📚 Needs improvement. Keep practising!'}
+        </div>
+
+        <button onClick={onBack} className="w-full px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-bold hover:opacity-90 transition-opacity">
           Back to Tests
         </button>
       </div>

@@ -210,38 +210,47 @@ const createTest = async (req, res, next) => {
        JSON.stringify(marking_scheme || { correct: 1, wrong: -0.25 }),
        shuffle_questions ? 1 : 0, shuffle_options ? 1 : 0,
        JSON.stringify(proctoring_config || { fullscreen: true, tab_switch_limit: 3, webcam: false }),
-       start_time, end_time, JSON.stringify(assigned_to || { batch_ids: [], student_ids: [] }),
+       start_time || null, end_time || null, JSON.stringify(assigned_to || { batch_ids: [], student_ids: [] }),
        req.user.user_id]
     );
 
-    // Add questions if provided
+    // Add questions — always insert as new (frontend IDs like ai_xxx / manual_xxx are not DB IDs)
+    const questionCount = questions && questions.length > 0 ? questions.length : 0;
     if (questions && questions.length > 0) {
       for (let i = 0; i < questions.length; i++) {
         const q = questions[i];
-        let question_id = q.question_id;
-
-        // If new question, insert it
-        if (!question_id) {
-          question_id = uuidv4();
-          await query(
-            `INSERT INTO questions (question_id,question_text,question_type,options,correct_answer,
-             explanation,difficulty,concept_id,source,created_by)
-             VALUES (?,?,?,?,?,?,?,?,'manual',?)`,
-            [question_id, q.question_text, q.question_type || 'mcq',
-             JSON.stringify(q.options), q.correct_answer, q.explanation,
-             q.difficulty || 3, q.concept_id, req.user.user_id]
-          );
-        }
-
+        const question_id = uuidv4();
+        const source = (q.question_id && String(q.question_id).startsWith('ai_')) ? 'ai_generated' : 'manual';
+        await query(
+          `INSERT INTO questions (question_id,question_text,question_type,options,correct_answer,
+           explanation,difficulty,concept_id,source,created_by)
+           VALUES (?,?,?,?,?,?,?,?,?,?)`,
+          [question_id, q.question_text, q.question_type || 'mcq',
+           JSON.stringify(q.options), q.correct_answer, q.explanation || null,
+           q.difficulty || 3, q.concept_id || null, source, req.user.user_id]
+        );
         await query(
           'INSERT INTO test_questions (test_id,question_id,display_order,marks) VALUES (?,?,?,?)',
-          [test_id, question_id, i + 1, q.marks || 1]
+          [test_id, question_id, i + 1, q.marks || marking_scheme?.correct || 1]
         );
       }
     }
 
+    // Calculate total_marks from questions
+    const computedTotalMarks = questionCount * (marking_scheme?.correct || 1);
+
+    // Update total_marks now that we know question count
+    await query('UPDATE tests SET total_marks=? WHERE test_id=?', [computedTotalMarks, test_id]);
+
     await logAudit(req.user.user_id, 'CREATE', 'test', test_id);
-    res.status(201).json({ test_id, message: 'Test created' });
+
+    const created = await query(
+      `SELECT t.*, u.name as created_by_name,
+              (SELECT COUNT(*) FROM test_questions tq WHERE tq.test_id = t.test_id) as question_count
+       FROM tests t LEFT JOIN users u ON u.user_id = t.created_by WHERE t.test_id = ?`,
+      [test_id]
+    );
+    res.status(201).json({ test: created.rows[0], test_id, message: 'Test created' });
   } catch (err) {
     next(err);
   }
@@ -505,7 +514,17 @@ const getTestReport = async (req, res, next) => {
        ORDER BY ta.score DESC`,
       [req.params.id]
     );
-    res.json({ attempts: attempts.rows });
+
+    const rows = attempts.rows.map(a => ({
+      ...a,
+      percentage: a.total_marks > 0 ? Math.round((a.score / a.total_marks) * 100) : Math.round(a.accuracy_percent || 0)
+    }));
+
+    const total_attempts = rows.length;
+    const avg_score = total_attempts > 0 ? rows.reduce((s, a) => s + a.percentage, 0) / total_attempts : 0;
+    const max_score = total_attempts > 0 ? Math.max(...rows.map(a => a.percentage)) : 0;
+
+    res.json({ students: rows, attempts: rows, total_attempts, avg_score, max_score });
   } catch (err) {
     next(err);
   }
@@ -514,22 +533,83 @@ const getTestReport = async (req, res, next) => {
 /** GET /admin/reports/students/:id */
 const getStudentReport = async (req, res, next) => {
   try {
-    const [attempts, skills] = await Promise.all([
+    const sid = req.params.id;
+    const [testAttempts, practiceSessions, skills] = await Promise.all([
       query(
-        `SELECT ta.attempt_id, t.title, ta.score, ta.total_marks, ta.accuracy_percent, ta.submitted_at
-         FROM test_attempts ta JOIN tests t ON t.test_id = ta.test_id
-         WHERE ta.student_id = ? AND ta.status='submitted'
+        `SELECT ta.attempt_id as id, t.title, 'test' as type, t.mode, t.test_id,
+                ta.score, ta.total_marks, ta.accuracy_percent,
+                ta.time_taken_seconds, ta.submitted_at, ta.violations_count,
+                creator.name as assigned_by_name,
+                (
+                  SELECT COUNT(*) FROM test_attempts ta2
+                  WHERE ta2.student_id = ta.student_id AND ta2.test_id = ta.test_id
+                    AND ta2.started_at <= ta.started_at
+                ) as attempt_number,
+                (
+                  SELECT GROUP_CONCAT(DISTINCT top.name SEPARATOR ', ')
+                  FROM test_questions tq
+                  JOIN questions q ON q.question_id = tq.question_id
+                  JOIN concepts c ON c.concept_id = q.concept_id
+                  JOIN topics top ON top.topic_id = c.topic_id
+                  WHERE tq.test_id = t.test_id
+                ) as topics
+         FROM test_attempts ta
+         JOIN tests t ON t.test_id = ta.test_id
+         LEFT JOIN users creator ON creator.user_id = t.created_by
+         WHERE ta.student_id = ? AND ta.status = 'submitted'
          ORDER BY ta.submitted_at DESC`,
-        [req.params.id]
+        [sid]
       ),
       query(
-        `SELECT ssp.*, t.name as topic_name
-         FROM student_skill_profile ssp JOIN topics t ON t.topic_id = ssp.topic_id
-         WHERE ssp.student_id = ?`,
-        [req.params.id]
+        `SELECT ps.session_id as id, COALESCE(ps.title, 'Practice Session') as title,
+                'practice' as type, 'practice' as mode, NULL as test_id,
+                ps.score,
+                (SELECT COUNT(*) FROM practice_answers pa WHERE pa.session_id = ps.session_id) as total_marks,
+                ps.accuracy_percent,
+                NULL as time_taken_seconds, ps.submitted_at, 0 as violations_count,
+                u.name as assigned_by_name,
+                (
+                  SELECT COUNT(*) FROM practice_sessions ps2
+                  WHERE ps2.student_id = ps.student_id
+                    AND (ps2.title = ps.title OR (ps2.title IS NULL AND ps.title IS NULL))
+                    AND ps2.started_at <= ps.started_at
+                ) as attempt_number,
+                (
+                  SELECT GROUP_CONCAT(DISTINCT top.name SEPARATOR ', ')
+                  FROM practice_answers pa
+                  JOIN questions q ON q.question_id = pa.question_id
+                  JOIN concepts c ON c.concept_id = q.concept_id
+                  JOIN topics top ON top.topic_id = c.topic_id
+                  WHERE pa.session_id = ps.session_id
+                ) as topics
+         FROM practice_sessions ps
+         JOIN users u ON u.user_id = ps.student_id
+         WHERE ps.student_id = ? AND ps.status = 'completed'
+         ORDER BY ps.submitted_at DESC`,
+        [sid]
+      ),
+      query(
+        `SELECT ssp.accuracy_percent as avg_score, ssp.total_attempts, ssp.correct_count,
+                ssp.is_weak, t.name as topic_name, s.name as subject_name
+         FROM student_skill_profile ssp
+         JOIN topics t ON t.topic_id = ssp.topic_id
+         JOIN subjects s ON s.subject_id = t.subject_id
+         WHERE ssp.student_id = ?
+         ORDER BY ssp.accuracy_percent ASC`,
+        [sid]
       )
     ]);
-    res.json({ attempts: attempts.rows, skills: skills.rows });
+
+    const all = [...testAttempts.rows, ...practiceSessions.rows]
+      .sort((a, b) => new Date(b.submitted_at) - new Date(a.submitted_at))
+      .map(a => ({
+        ...a,
+        percentage: a.total_marks > 0
+          ? Math.round((a.score / a.total_marks) * 100)
+          : Math.round(a.accuracy_percent || 0)
+      }));
+
+    res.json({ attempts: all, skills: skills.rows });
   } catch (err) {
     next(err);
   }
@@ -564,12 +644,88 @@ const updatePlan = async (req, res, next) => {
     if (tasks_to_add && tasks_to_add.length > 0) {
       for (const t of tasks_to_add) {
         await query(
-          'INSERT INTO plan_tasks (task_id,plan_id,week_number,day_number,task_type,description,estimated_minutes) VALUES (?,?,?,?,?,?,?)',
-          [uuidv4(), req.params.plan_id, t.week_number, t.day_number, t.task_type, t.description, t.estimated_minutes]
+          'INSERT INTO plan_tasks (task_id,plan_id,week_number,day_number,task_type,description,estimated_minutes,content,url) VALUES (?,?,?,?,?,?,?,?,?)',
+          [uuidv4(), req.params.plan_id, t.week_number, t.day_number, t.task_type, t.description, t.estimated_minutes, t.content || null, t.url || null]
         );
       }
     }
     res.json({ message: 'Plan updated' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/** POST /admin/plans/:student_id/generate */
+const adminGeneratePlan = async (req, res, next) => {  try {
+    const { student_id } = req.params;
+
+    // Verify student exists
+    const studentCheck = await query('SELECT user_id, name FROM users WHERE user_id=? AND role="student"', [student_id]);
+    if (!studentCheck.rows.length) return res.status(404).json({ message: 'Student not found' });
+
+    let targetTopics = [];
+    const weakTopics = await query(
+      `SELECT ssp.topic_id, t.name as topic_name, ssp.accuracy_percent
+       FROM student_skill_profile ssp
+       JOIN topics t ON t.topic_id = ssp.topic_id
+       WHERE ssp.student_id = ? AND ssp.is_weak = 1
+       ORDER BY ssp.accuracy_percent ASC LIMIT 5`,
+      [student_id]
+    );
+    targetTopics = weakTopics.rows;
+
+    if (targetTopics.length === 0) {
+      const fallbackTopics = await query(
+        `SELECT topic_id, name as topic_name FROM topics ORDER BY RAND() LIMIT 3`, []
+      );
+      targetTopics = fallbackTopics.rows;
+    }
+
+    // Archive existing active plans
+    await query("UPDATE study_plans SET status='archived' WHERE student_id=? AND status='active'", [student_id]);
+
+    const plan_id = uuidv4();
+    const duration_weeks = Math.min(targetTopics.length, 4);
+    await query(
+      `INSERT INTO study_plans (plan_id, student_id, generated_at, duration_weeks, status, source)
+       VALUES (?,?,NOW(),?,'active','admin_custom')`,
+      [plan_id, student_id, duration_weeks]
+    );
+
+    const tasks = [];
+    targetTopics.forEach((topic, weekIndex) => {
+      const week = weekIndex + 1;
+      tasks.push(
+        [uuidv4(), plan_id, week, 1, 'video', `Watch concept videos for ${topic.topic_name}`, 30],
+        [uuidv4(), plan_id, week, 2, 'pdf', `Read formulas & shortcuts for ${topic.topic_name}`, 20],
+        [uuidv4(), plan_id, week, 3, 'practice', `Practice 20 questions on ${topic.topic_name}`, 40],
+        [uuidv4(), plan_id, week, 4, 'practice', `Practice 20 more questions on ${topic.topic_name}`, 40],
+        [uuidv4(), plan_id, week, 5, 'test', `Re-evaluation test for ${topic.topic_name}`, 25]
+      );
+    });
+    for (const t of tasks) {
+      await query(
+        'INSERT INTO plan_tasks (task_id,plan_id,week_number,day_number,task_type,description,estimated_minutes) VALUES (?,?,?,?,?,?,?)',
+        t
+      );
+    }
+
+    const createdPlan = await query('SELECT * FROM study_plans WHERE plan_id=?', [plan_id]);
+    const createdTasks = await query('SELECT * FROM plan_tasks WHERE plan_id=? ORDER BY week_number, day_number', [plan_id]);
+    const planData = createdPlan.rows[0];
+    planData.tasks = createdTasks.rows;
+
+    res.json({ plan: planData });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/** DELETE /admin/plans/:plan_id/tasks/:task_id */
+const deletePlanTask = async (req, res, next) => {
+  try {
+    await query('DELETE FROM plan_tasks WHERE task_id=?', [req.params.task_id]);
+    res.json({ message: 'Task removed' });
   } catch (err) {
     next(err);
   }
@@ -684,7 +840,7 @@ const getTopics = async (req, res, next) => {
     const { subject_id } = req.query;
     let where = 'WHERE 1=1';
     const params = [];
-    if (subject_id) { where += ' AND subject_id=?'; params.push(subject_id); }
+    if (subject_id) { where += ' AND t.subject_id=?'; params.push(subject_id); }
     const result = await query(`SELECT t.*, s.name as subject_name FROM topics t JOIN subjects s ON s.subject_id=t.subject_id ${where} ORDER BY t.name`, params);
     res.json({ topics: result.rows });
   } catch (err) {
@@ -820,7 +976,7 @@ module.exports = {
   getQuestions, createQuestion, updateQuestion, deleteQuestion,
   getMaterials, uploadMaterial, updateMaterial, deleteMaterial,
   getTestReport, getStudentReport,
-  getStudentPlan, updatePlan,
+  getStudentPlan, updatePlan, adminGeneratePlan, deletePlanTask,
   getViolations, createAnnouncement, getAnnouncements,
   getAllDoubts, answerDoubt,
   getSubjects, createSubject, getTopics, createTopic, getConcepts, createConcept,

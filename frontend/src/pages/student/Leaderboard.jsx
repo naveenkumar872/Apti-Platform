@@ -18,16 +18,20 @@ export default function Leaderboard() {
   const top3Icons = ["text-yellow-500", "text-gray-400", "text-amber-600"];
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-yellow-400 to-amber-500 flex items-center justify-center">
-          <Trophy size={18} className="text-white" />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Leaderboard</h1>
-          <p className="text-xs text-gray-400">Top performers this week</p>
+    <div className="w-full min-h-full flex flex-col">
+      <div className="relative bg-gradient-to-br from-yellow-400 via-amber-500 to-orange-500 px-6 pt-8 pb-7 md:px-10 overflow-hidden">
+        <div className="absolute inset-0 opacity-[0.07]"
+          style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
+        <div className="relative">
+          <div className="flex items-center gap-2 mb-2">
+            <Trophy size={15} className="text-white/70" />
+            <span className="text-white/60 text-xs font-bold tracking-widest uppercase">Rankings</span>
+          </div>
+          <h1 className="text-2xl md:text-3xl font-black text-white">Leaderboard</h1>
+          <p className="text-white/70 text-sm mt-1.5">Top performers this week</p>
         </div>
       </div>
+      <div className="flex-1 p-5 md:p-8">
 
       {/* Top 3 podium */}
       {!loading && data.length >= 3 && (
@@ -87,6 +91,7 @@ export default function Leaderboard() {
           })}
         </div>
       )}
+      </div>
     </div>
   );
 }

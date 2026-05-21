@@ -37,23 +37,27 @@ export default function StudyPlan() {
   const pct = tasks.length > 0 ? Math.round((done / tasks.length) * 100) : 0;
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
-            <CalendarDays size={18} className="text-white" />
-          </div>
+    <div className="w-full min-h-full flex flex-col">
+      <div className="relative bg-gradient-to-br from-emerald-500 via-teal-600 to-cyan-600 px-6 pt-8 pb-7 md:px-10 overflow-hidden">
+        <div className="absolute inset-0 opacity-[0.07]"
+          style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
+        <div className="relative flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Study Plan</h1>
-            <p className="text-xs text-gray-400">AI-generated personal plan</p>
+            <div className="flex items-center gap-2 mb-2">
+              <CalendarDays size={15} className="text-white/70" />
+              <span className="text-white/60 text-xs font-bold tracking-widest uppercase">Study Plan</span>
+            </div>
+            <h1 className="text-2xl md:text-3xl font-black text-white">Your Learning Path</h1>
+            <p className="text-white/70 text-sm mt-1.5">AI-generated personal study plan</p>
           </div>
+          <button onClick={generate} disabled={generating}
+            className="flex items-center gap-2 bg-white/20 backdrop-blur-sm border border-white/30 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-white/30 transition-colors flex-shrink-0 disabled:opacity-60">
+            {generating ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
+            {plan ? "Regenerate" : "Generate Plan"}
+          </button>
         </div>
-        <button onClick={generate} disabled={generating}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-sm font-semibold shadow-sm hover:opacity-90 transition-opacity disabled:opacity-60">
-          {generating ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
-          {plan ? "Regenerate" : "Generate Plan"}
-        </button>
       </div>
+      <div className="flex-1 p-5 md:p-8">
 
       {loading ? (
         <div className="space-y-3">{[...Array(5)].map((_, i) => <div key={i} className="h-16 bg-gray-200 dark:bg-gray-800 animate-pulse rounded-2xl" />)}</div>
@@ -105,6 +109,7 @@ export default function StudyPlan() {
           </div>
         </>
       )}
+      </div>
     </div>
   );
 }

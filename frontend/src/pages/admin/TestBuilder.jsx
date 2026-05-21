@@ -1,39 +1,39 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { Plus, Trash2, Wand2, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, Wand2, ChevronRight, ClipboardList } from 'lucide-react';
 
 const STEPS = ['Basic Info', 'Questions', 'Settings', 'Publish'];
+const C = "bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl";
+const inputCls = "w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-800 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-violet-500 focus:outline-none";
 
 function Step1({ data, onChange }) {
   return (
     <div className="space-y-4">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Test Title *</label>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Test Title *</label>
         <input value={data.title} onChange={e => onChange({ title: e.target.value })}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
-          placeholder="e.g., TCS NQT Mock Test 1" />
+          className={inputCls} placeholder="e.g., TCS NQT Mock Test 1" />
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
         <textarea value={data.description} onChange={e => onChange({ description: e.target.value })}
-          rows={3} className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none resize-none"
+          rows={3} className={inputCls + " resize-none"}
           placeholder="Describe the test..." />
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Mode</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Mode</label>
           <select value={data.mode} onChange={e => onChange({ mode: e.target.value })}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none">
+            className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-800 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none">
             <option value="practice">Practice</option>
             <option value="test">Test (Proctored)</option>
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Duration (minutes)</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Duration (minutes)</label>
           <input type="number" value={data.duration_minutes} onChange={e => onChange({ duration_minutes: e.target.value })}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none"
-            min={1} />
+            className={inputCls} min={1} />
         </div>
       </div>
     </div>
@@ -74,24 +74,24 @@ function Step2({ questions, onAdd, onRemove, onAIGenerate }) {
   return (
     <div className="space-y-6">
       {/* AI Generate */}
-      <div className="p-4 bg-purple-50 rounded-xl border border-purple-100">
-        <h3 className="font-medium text-purple-800 mb-3 flex items-center gap-2"><Wand2 size={16}/> AI Question Generator</h3>
+      <div className="p-4 bg-violet-50 dark:bg-violet-950/30 rounded-xl border border-violet-100 dark:border-violet-900/40">
+        <h3 className="font-medium text-violet-800 dark:text-violet-300 mb-3 flex items-center gap-2"><Wand2 size={16}/> AI Question Generator</h3>
         <div className="flex gap-3 items-end">
           <div className="flex-1">
             <select value={aiTopic} onChange={e => setAITopic(e.target.value)}
-              className="w-full border border-purple-200 rounded-lg px-3 py-2 text-sm focus:outline-none bg-white">
+              className="w-full bg-white dark:bg-gray-800 border border-violet-200 dark:border-violet-800 text-gray-800 dark:text-white rounded-xl px-3 py-2 text-sm focus:outline-none">
               <option value="">Select topic</option>
               {topics.map(t => <option key={t.topic_id} value={t.topic_id}>{t.name}</option>)}
             </select>
           </div>
           <div>
             <select value={aiCount} onChange={e => setAICount(e.target.value)}
-              className="border border-purple-200 rounded-lg px-3 py-2 text-sm focus:outline-none bg-white">
+              className="bg-white dark:bg-gray-800 border border-violet-200 dark:border-violet-800 text-gray-800 dark:text-white rounded-xl px-3 py-2 text-sm focus:outline-none">
               {[5, 10, 15].map(n => <option key={n} value={n}>{n} Q</option>)}
             </select>
           </div>
           <button onClick={handleAIGenerate} disabled={aiLoading || !aiTopic}
-            className="bg-purple-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-60">
+            className="bg-violet-600 text-white text-sm px-4 py-2 rounded-xl hover:bg-violet-500 disabled:opacity-60 transition-colors">
             {aiLoading ? 'Generating...' : 'Generate'}
           </button>
         </div>
@@ -100,13 +100,13 @@ function Step2({ questions, onAdd, onRemove, onAIGenerate }) {
       {/* Added Questions */}
       {questions.length > 0 && (
         <div>
-          <h3 className="font-medium text-gray-700 mb-2">Questions ({questions.length})</h3>
+          <h3 className="font-medium text-gray-700 dark:text-gray-300 mb-2">Questions ({questions.length})</h3>
           <div className="space-y-2 max-h-60 overflow-y-auto">
             {questions.map((q, i) => (
-              <div key={q.question_id || i} className="flex items-start gap-2 p-3 bg-white rounded-lg border border-gray-100">
+              <div key={q.question_id || i} className="flex items-start gap-2 p-3 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">
                 <span className="text-xs text-gray-400 mt-0.5">{i + 1}.</span>
-                <p className="text-sm text-gray-700 flex-1 line-clamp-2">{q.question_text}</p>
-                <button onClick={() => onRemove(i)} className="text-red-400 hover:text-red-600 flex-shrink-0">
+                <p className="text-sm text-gray-700 dark:text-gray-300 flex-1 line-clamp-2">{q.question_text}</p>
+                <button onClick={() => onRemove(i)} className="text-red-400 hover:text-red-500 flex-shrink-0 transition-colors">
                   <Trash2 size={14} />
                 </button>
               </div>
@@ -116,28 +116,28 @@ function Step2({ questions, onAdd, onRemove, onAIGenerate }) {
       )}
 
       {/* Manual Add */}
-      <div className="border border-gray-200 rounded-xl p-4">
-        <h3 className="font-medium text-gray-700 mb-3 flex items-center gap-2"><Plus size={16}/> Add Question Manually</h3>
+      <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-4">
+        <h3 className="font-medium text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><Plus size={16}/> Add Question Manually</h3>
         <textarea value={manual.question_text}
           onChange={e => setManual(m => ({ ...m, question_text: e.target.value }))}
           rows={2} placeholder="Question text..."
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none mb-3" />
+          className={inputCls + " resize-none mb-3"} />
         {manual.options.map((opt, i) => (
           <div key={opt.id} className="flex items-center gap-2 mb-2">
-            <span className="w-6 text-sm font-medium text-gray-600">{opt.id}.</span>
+            <span className="w-6 text-sm font-medium text-gray-600 dark:text-gray-400">{opt.id}.</span>
             <input value={opt.text}
               onChange={e => setManual(m => ({ ...m, options: m.options.map((o, j) => j === i ? { ...o, text: e.target.value } : o) }))}
-              className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none"
+              className={inputCls}
               placeholder={`Option ${opt.id}`} />
           </div>
         ))}
         <div className="flex items-center gap-3 mt-2">
-          <label className="text-sm text-gray-600">Correct:</label>
+          <label className="text-sm text-gray-600 dark:text-gray-400">Correct:</label>
           <select value={manual.correct_answer} onChange={e => setManual(m => ({ ...m, correct_answer: e.target.value }))}
-            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm">
+            className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-white rounded-xl px-3 py-1.5 text-sm">
             {['A', 'B', 'C', 'D'].map(o => <option key={o}>{o}</option>)}
           </select>
-          <button onClick={addManual} className="ml-auto bg-blue-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-blue-700">
+          <button onClick={addManual} className="ml-auto bg-violet-600 text-white text-sm px-4 py-1.5 rounded-xl hover:bg-violet-500 transition-colors">
             Add Question
           </button>
         </div>
@@ -149,60 +149,60 @@ function Step2({ questions, onAdd, onRemove, onAIGenerate }) {
 function Step3({ data, onChange }) {
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+      <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-xl">
         <div>
-          <p className="text-sm font-medium text-gray-700">Shuffle Questions</p>
-          <p className="text-xs text-gray-500">Randomize question order for each student</p>
+          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Shuffle Questions</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Randomize question order for each student</p>
         </div>
         <button
           onClick={() => onChange({ shuffle_questions: !data.shuffle_questions })}
-          className={`relative w-11 h-6 rounded-full transition-colors ${data.shuffle_questions ? 'bg-blue-600' : 'bg-gray-300'}`}
+          className={`relative w-11 h-6 rounded-full transition-colors ${data.shuffle_questions ? 'bg-violet-600' : 'bg-gray-300 dark:bg-gray-600'}`}
         >
           <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${data.shuffle_questions ? 'translate-x-5' : ''}`} />
         </button>
       </div>
-      <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+      <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-xl">
         <div>
-          <p className="text-sm font-medium text-gray-700">Shuffle Options</p>
-          <p className="text-xs text-gray-500">Randomize option order</p>
+          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Shuffle Options</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Randomize option order</p>
         </div>
         <button
           onClick={() => onChange({ shuffle_options: !data.shuffle_options })}
-          className={`relative w-11 h-6 rounded-full transition-colors ${data.shuffle_options ? 'bg-blue-600' : 'bg-gray-300'}`}
+          className={`relative w-11 h-6 rounded-full transition-colors ${data.shuffle_options ? 'bg-violet-600' : 'bg-gray-300 dark:bg-gray-600'}`}
         >
           <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${data.shuffle_options ? 'translate-x-5' : ''}`} />
         </button>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Correct Marks</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Correct Marks</label>
           <input type="number" step="0.25"
             value={data.marking_scheme?.correct ?? 1}
             onChange={e => onChange({ marking_scheme: { ...data.marking_scheme, correct: parseFloat(e.target.value) } })}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none" />
+            className={inputCls} />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Wrong Marks (negative)</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Wrong Marks (negative)</label>
           <input type="number" step="0.25"
             value={data.marking_scheme?.wrong ?? -0.25}
             onChange={e => onChange({ marking_scheme: { ...data.marking_scheme, wrong: parseFloat(e.target.value) } })}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none" />
+            className={inputCls} />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Start Time (optional)</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Start Time (optional)</label>
           <input type="datetime-local"
             value={data.start_time || ''}
             onChange={e => onChange({ start_time: e.target.value })}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none" />
+            className={inputCls} />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">End Time (optional)</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">End Time (optional)</label>
           <input type="datetime-local"
             value={data.end_time || ''}
             onChange={e => onChange({ end_time: e.target.value })}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none" />
+            className={inputCls} />
         </div>
       </div>
     </div>

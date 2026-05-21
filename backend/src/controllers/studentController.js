@@ -228,7 +228,7 @@ const startPractice = async (req, res, next) => {
     // Accept both frontend format (topic_id, count, difficulty as number string)
     // and direct format (topic_ids array, num_questions, difficulty as string)
     let { topic_ids, concept_ids, num_questions, difficulty, time_limit,
-          topic_id, count } = req.body;
+          topic_id, count, title, method, config } = req.body;
 
     // Normalize params from frontend format
     if (topic_id && !topic_ids) topic_ids = [topic_id];
@@ -305,13 +305,16 @@ const startPractice = async (req, res, next) => {
     }
 
     const session_id = uuidv4();
+    const sessionTitle = title || (topicName ? `${topicName} Practice` : 'Practice Session');
+    const sessionMethod = method || 'topic';
+    const sessionConfig = config ? (typeof config === 'string' ? config : JSON.stringify(config)) : JSON.stringify({ difficulty: diffLabel, count: num_questions });
     await query(
       `INSERT INTO practice_sessions
-         (session_id, student_id, question_ids, started_at, time_limit_minutes, status)
-       VALUES (?, ?, ?, NOW(), ?, 'in_progress')`,
+         (session_id, student_id, question_ids, started_at, time_limit_minutes, status, title, method, config)
+       VALUES (?, ?, ?, NOW(), ?, 'in_progress', ?, ?, ?)`,
       [session_id, student_id,
        JSON.stringify(aiQuestions.map(q => q.question_id)),
-       time_limit || null]
+       time_limit || null, sessionTitle, sessionMethod, sessionConfig]
     );
 
     res.json({
@@ -1396,9 +1399,114 @@ const deleteAIMaterial = async (req, res, next) => {
   }
 };
 
+/** GET /student/practice/sessions — list student's practice sessions */
+const getPracticeSessions = async (req, res, next) => {
+  try {
+    const student_id = req.user.user_id;
+    const result = await query(
+      `SELECT session_id, title, method, config, status, score, accuracy_percent,
+              started_at, submitted_at,
+              JSON_LENGTH(question_ids) AS total_questions
+       FROM practice_sessions
+       WHERE student_id = ?
+       ORDER BY started_at DESC
+       LIMIT 50`,
+      [student_id]
+    );
+    res.json({ sessions: result.rows });
+  } catch (err) { next(err); }
+};
+
+/** DELETE /student/practice/sessions/:id */
+const deletePracticeSession = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const student_id = req.user.user_id;
+    // Verify ownership
+    const sess = await query(
+      'SELECT question_ids FROM practice_sessions WHERE session_id = ? AND student_id = ?',
+      [id, student_id]
+    );
+    if (sess.rows.length === 0) return res.status(404).json({ error: 'Session not found' });
+    // Delete AI-generated questions that belonged only to this session
+    const rawQids = sess.rows[0].question_ids;
+    const qids = Array.isArray(rawQids) ? rawQids : JSON.parse(rawQids || '[]');
+    if (qids.length > 0) {
+      const placeholders = qids.map(() => '?').join(',');
+      await query(
+        `DELETE FROM questions WHERE question_id IN (${placeholders}) AND source = 'ai_generated'`,
+        qids
+      );
+    }
+    await query('DELETE FROM practice_sessions WHERE session_id = ?', [id]);
+    res.json({ message: 'Deleted' });
+  } catch (err) { next(err); }
+};
+
+/** POST /student/practice/syllabus-extract — upload file, AI extracts topics */
+const syllabusExtractTopics = async (req, res, next) => {
+  try {
+    const { callAI } = require('../utils/aiQuestions');
+    const fileBuffer = req.file?.buffer;
+    const fileName   = req.file?.originalname || '';
+    if (!fileBuffer) return res.status(400).json({ error: 'No file uploaded' });
+
+    // Simple text extraction: works for .txt, and text-based PDFs
+    let rawText = '';
+    const ext = fileName.toLowerCase().split('.').pop();
+    if (ext === 'pdf') {
+      // Extract printable ASCII text from PDF binary (works for text-based PDFs)
+      rawText = fileBuffer.toString('latin1').replace(/[^\x20-\x7E\n\r]/g, ' ').replace(/\s+/g, ' ').slice(0, 4000);
+    } else {
+      rawText = fileBuffer.toString('utf8').slice(0, 4000);
+    }
+
+    const prompt = `You are an expert in Indian placement exam preparation.
+
+Given this text from a student's syllabus or study document, extract a list of aptitude/reasoning/verbal topics that match placement exam topics (Quantitative Aptitude, Logical Reasoning, Verbal Ability, Data Interpretation).
+
+Text: """${rawText}"""
+
+Return ONLY a valid JSON array of topic name strings. Pick up to 15 most relevant topics:
+["Topic 1", "Topic 2", ...]
+
+Rules:
+- Map to standard placement exam topic names (e.g. "Percentages", "Number System", "Blood Relations")
+- If no relevant topics found, return common topics: ["Number System", "Percentages", "Logical Sequences"]
+- Return ONLY the JSON array`;
+
+    // We need the callAI function from the module
+    const aiModule = require('../utils/aiQuestions');
+    const content = await aiModule.generateTopicsForSubject.__proto__.constructor === Function
+      ? await (async () => {
+          const cerebrasKey = (process.env.CEREBRAS_API_KEY || '').trim();
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 30000);
+          const response = await fetch('https://api.cerebras.ai/v1/chat/completions', {
+            method: 'POST', signal: controller.signal,
+            headers: { 'Authorization': `Bearer ${cerebrasKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: 'llama3.1-8b', messages: [{ role: 'user', content: prompt }], temperature: 0.5, max_tokens: 1000 }),
+          });
+          clearTimeout(timer);
+          if (!response.ok) throw new Error(`API ${response.status}`);
+          const data = await response.json();
+          return data.choices?.[0]?.message?.content || '';
+        })()
+      : '';
+
+    // Parse JSON array from response
+    const cleaned = content.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+    const m = cleaned.match(/\[[\s\S]*\]/);
+    const topics = m ? JSON.parse(m[0]) : ["Number System", "Percentages", "Logical Sequences", "Time and Work", "Blood Relations"];
+
+    res.json({ topics: Array.isArray(topics) ? topics.filter(Boolean).slice(0, 15) : [] });
+  } catch (err) { next(err); }
+};
+
 module.exports = {
   getDashboard, getMaterials, getMaterialById, markLearned, bookmarkMaterial,
   getNotes, startPractice, submitPracticeAnswer, endPractice,
+  getPracticeSessions, deletePracticeSession, syllabusExtractTopics,
   getAssignedTests, startTest, saveTestAnswer, submitTest, reportViolation,
   getReports, getReportById, generatePlan, getCurrentPlan, completeTask,
   getCompanies, getCompanyById, generateCompanyQuestions, generateTopicQuestions, getLeaderboard,

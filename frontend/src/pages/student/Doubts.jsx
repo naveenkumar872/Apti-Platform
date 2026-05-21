@@ -77,23 +77,26 @@ export default function Doubts() {
   };
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
-            <MessageCircleQuestion size={18} className="text-white" />
-          </div>
+    <div className="w-full min-h-full flex flex-col">
+      <div className="relative bg-gradient-to-br from-violet-600 via-purple-600 to-pink-500 px-6 pt-8 pb-7 md:px-10 overflow-hidden">
+        <div className="absolute inset-0 opacity-[0.07]"
+          style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
+        <div className="relative flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Doubts</h1>
-            <p className="text-xs text-gray-400">Ask questions, get answers</p>
+            <div className="flex items-center gap-2 mb-2">
+              <MessageCircleQuestion size={15} className="text-white/70" />
+              <span className="text-white/60 text-xs font-bold tracking-widest uppercase">Community</span>
+            </div>
+            <h1 className="text-2xl md:text-3xl font-black text-white">Doubts</h1>
+            <p className="text-white/70 text-sm mt-1.5">Ask questions, get peer answers</p>
           </div>
+          <button onClick={() => setShowForm(f => !f)}
+            className="flex items-center gap-2 bg-white/20 backdrop-blur-sm border border-white/30 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-white/30 transition-colors flex-shrink-0">
+            <Plus size={15} />Ask Doubt
+          </button>
         </div>
-        <button onClick={() => setShowForm(f => !f)}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-semibold shadow-sm hover:opacity-90 transition-opacity">
-          <Plus size={15} />
-          Ask Doubt
-        </button>
       </div>
+      <div className="flex-1 p-5 md:p-8">
 
       {showForm && (
         <div className={"rounded-2xl border p-5 mb-5 " + C}>
@@ -143,6 +146,7 @@ export default function Doubts() {
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }

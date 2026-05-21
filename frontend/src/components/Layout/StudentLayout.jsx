@@ -28,7 +28,7 @@ function initials(name) {
 export default function StudentLayout() {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
-  const [dark, setDark] = useState(() => localStorage.getItem('theme') === 'dark');
+  const [dark, setDark] = useState(() => localStorage.getItem('theme') !== 'light');
 
   useEffect(() => {
     const html = document.documentElement;

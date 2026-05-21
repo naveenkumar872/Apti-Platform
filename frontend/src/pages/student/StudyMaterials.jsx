@@ -404,12 +404,20 @@ export default function StudyMaterials() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-gray-950 p-6">
-      <div className="max-w-5xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Study Materials</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Choose a subject then topic then concept â€” AI generates videos, shortcuts &amp; formulas.</p>
+    <div className="w-full min-h-full flex flex-col">
+      <div className="relative bg-gradient-to-br from-violet-600 via-purple-600 to-indigo-600 px-6 pt-8 pb-7 md:px-10 overflow-hidden">
+        <div className="absolute inset-0 opacity-[0.07]"
+          style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
+        <div className="relative">
+          <div className="flex items-center gap-2 mb-2">
+            <BookMarked size={15} className="text-white/70" />
+            <span className="text-white/60 text-xs font-bold tracking-widest uppercase">Learning Hub</span>
+          </div>
+          <h1 className="text-2xl md:text-3xl font-black text-white">Study Materials</h1>
+          <p className="text-white/70 text-sm mt-1.5">AI-generated videos, shortcuts &amp; formulas for every topic</p>
         </div>
+      </div>
+      <div className="flex-1 p-5 md:p-8">
 
         {/* Tabs */}
         <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl w-fit mb-6">

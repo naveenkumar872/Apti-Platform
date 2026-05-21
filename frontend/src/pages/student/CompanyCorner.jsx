@@ -151,8 +151,28 @@ export default function CompanyCorner() {
   const topics = selected ? parseTopics(selected.important_topics) : null;
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      <h1 className="text-2xl font-bold text-gray-800 mb-5">Company Corner</h1>
+    <div className="w-full min-h-full flex flex-col">
+      <div className="relative bg-gradient-to-br from-orange-500 via-amber-500 to-yellow-400 px-6 pt-8 pb-7 md:px-10 overflow-hidden">
+        <div className="absolute inset-0 opacity-[0.07]"
+          style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
+        <div className="relative flex items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Building2 size={15} className="text-white/70" />
+              <span className="text-white/60 text-xs font-bold tracking-widest uppercase">Placement Prep</span>
+            </div>
+            <h1 className="text-2xl md:text-3xl font-black text-white">Company Corner</h1>
+            <p className="text-white/70 text-sm mt-1.5">Previous year papers &amp; topic-wise questions</p>
+          </div>
+          <div className="hidden sm:flex gap-3 flex-shrink-0">
+            <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl px-4 py-3 text-center min-w-[72px]">
+              <p className="text-xl font-black text-white">{companies.length}</p>
+              <p className="text-white/60 text-xs mt-0.5">Companies</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="flex-1 p-5 md:p-8">
 
       {/* Search */}
       <div className="relative mb-4">
@@ -394,6 +414,7 @@ export default function CompanyCorner() {
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }

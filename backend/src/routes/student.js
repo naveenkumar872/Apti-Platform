@@ -31,9 +31,15 @@ router.delete('/materials/:id', studentController.deleteAIMaterial);
 router.get('/notes', studentController.getNotes);
 
 // Practice Sessions
+router.get('/practice/sessions', studentController.getPracticeSessions);
 router.post('/practice/start', studentController.startPractice);
 router.post('/practice/submit-answer', studentController.submitPracticeAnswer);
 router.post('/practice/end', studentController.endPractice);
+router.delete('/practice/sessions/:id', studentController.deletePracticeSession);
+router.post('/practice/syllabus-extract',
+  require('multer')({ storage: require('multer').memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } }).single('syllabus'),
+  studentController.syllabusExtractTopics
+);
 
 // Assigned Tests
 router.get('/tests', studentController.getAssignedTests);

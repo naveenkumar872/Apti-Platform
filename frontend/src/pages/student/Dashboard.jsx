@@ -17,10 +17,12 @@ export default function StudentDashboard() {
   }, []);
 
   if (loading) return (
-    <div className="p-6 space-y-4 max-w-6xl mx-auto animate-pulse">
-      <div className="h-8 w-64 bg-gray-200 dark:bg-gray-800 rounded-xl" />
-      <div className="grid grid-cols-4 gap-4">{[...Array(4)].map((_, i) => <div key={i} className="h-28 bg-gray-200 dark:bg-gray-800 rounded-2xl" />)}</div>
-      <div className="grid grid-cols-2 gap-4">{[...Array(2)].map((_, i) => <div key={i} className="h-60 bg-gray-200 dark:bg-gray-800 rounded-2xl" />)}</div>
+    <div className="w-full min-h-full flex flex-col animate-pulse">
+      <div className="h-36 bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600" />
+      <div className="p-5 md:p-8 space-y-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">{[...Array(4)].map((_, i) => <div key={i} className="h-28 bg-gray-200 dark:bg-gray-800 rounded-2xl" />)}</div>
+        <div className="grid grid-cols-2 gap-4">{[...Array(2)].map((_, i) => <div key={i} className="h-60 bg-gray-200 dark:bg-gray-800 rounded-2xl" />)}</div>
+      </div>
     </div>
   );
 
@@ -48,20 +50,38 @@ export default function StudentDashboard() {
   ];
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">
-            Welcome back, {user?.name?.split(" ")[0]}! 👋
-          </h1>
-          <p className="text-gray-400 text-sm mt-1">Here is your placement preparation overview</p>
+    <div className="w-full min-h-full flex flex-col">
+      <div className="relative bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 px-6 pt-8 pb-7 md:px-10 overflow-hidden">
+        <div className="absolute inset-0 opacity-[0.07]"
+          style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
+        <div className="relative flex items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <BarChart2 size={15} className="text-white/70" />
+              <span className="text-white/60 text-xs font-bold tracking-widest uppercase">Dashboard</span>
+            </div>
+            <h1 className="text-2xl md:text-3xl font-black text-white">
+              Welcome back, {user?.name?.split(" ")[0]}! 👋
+            </h1>
+            <p className="text-white/70 text-sm mt-1.5">Your placement preparation overview</p>
+          </div>
+          <div className="hidden sm:flex items-center gap-3 flex-shrink-0">
+            <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl px-4 py-3 text-center min-w-[72px]">
+              <p className="text-xl font-black text-white">{stats.total_tests ?? 0}</p>
+              <p className="text-white/60 text-xs mt-0.5">Tests</p>
+            </div>
+            <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl px-4 py-3 text-center min-w-[72px]">
+              <p className="text-xl font-black text-white">{Math.round(stats.avg_score ?? 0)}%</p>
+              <p className="text-white/60 text-xs mt-0.5">Avg Score</p>
+            </div>
+            <Link to="/student/practice"
+              className="flex items-center gap-2 bg-white/20 backdrop-blur-sm border border-white/30 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-white/30 transition-colors">
+              <Zap size={15} /> Practice <ArrowRight size={14} />
+            </Link>
+          </div>
         </div>
-        <Link to="/student/practice"
-          className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:opacity-90 transition-opacity">
-          <Zap size={15} /> Start Practice <ArrowRight size={14} />
-        </Link>
       </div>
+      <div className="flex-1 p-5 md:p-8">
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -197,6 +217,7 @@ export default function StudentDashboard() {
             ))}
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

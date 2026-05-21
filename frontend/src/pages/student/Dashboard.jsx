@@ -2,10 +2,13 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   BarChart2, BookOpen, ClipboardList, Calendar, TrendingDown,
-  Trophy, Zap, ArrowRight, Flame
+  Zap, ArrowRight, Flame, Sparkles, Target, Lock
 } from "lucide-react";
 import api from "../../services/api";
 import useAuthStore from "../../stores/authStore";
+import DailyFocusCard from "../../components/learning/DailyFocusCard";
+import MasteryPanel from "../../components/learning/MasteryPanel";
+import MistakesCard from "../../components/learning/MistakesCard";
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid
@@ -17,10 +20,14 @@ export default function StudentDashboard() {
   const { user } = useAuthStore();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const diagnosticDone = !!user?.diagnostic_completed_at;
 
   useEffect(() => {
+    // Skip API calls while gated — they'd just show zeros anyway and the banner
+    // is the only thing the student should engage with.
+    if (!diagnosticDone) { setLoading(false); return; }
     api.get("/student/dashboard").then(r => setData(r.data)).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+  }, [diagnosticDone]);
 
   if (loading) return (
     <div className="w-full min-h-full flex flex-col animate-pulse">
@@ -28,6 +35,72 @@ export default function StudentDashboard() {
       <div className="p-5 md:p-8 space-y-4">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">{[...Array(4)].map((_, i) => <div key={i} className="h-28 bg-slate-200 dark:bg-white/[0.04] rounded-2xl" />)}</div>
         <div className="grid grid-cols-2 gap-4">{[...Array(2)].map((_, i) => <div key={i} className="h-60 bg-slate-200 dark:bg-white/[0.04] rounded-2xl" />)}</div>
+      </div>
+    </div>
+  );
+
+  // Diagnostic-gated state — show the unlock CTA, hide everything else
+  if (!diagnosticDone) return (
+    <div className="w-full min-h-full flex flex-col bg-slate-50 dark:bg-[#09090d]">
+      <div className="relative bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 px-6 pt-8 pb-8 md:px-10 overflow-hidden">
+        <div className="absolute inset-0 opacity-[0.06] pointer-events-none"
+          style={{ backgroundImage: 'radial-gradient(circle, white 1px, transparent 1px)', backgroundSize: '28px 28px' }} />
+        <div className="relative">
+          <p className="text-white/60 text-[11px] font-semibold tracking-[0.18em] uppercase mb-2">Welcome</p>
+          <h1 className="text-2xl md:text-[28px] font-semibold text-white tracking-tight">
+            Hi {user?.name?.split(' ')[0]} 👋
+          </h1>
+          <p className="text-white/75 text-sm mt-1.5">Let's set you up for the placement season.</p>
+        </div>
+      </div>
+
+      <div className="flex-1 p-5 md:p-8 flex items-start justify-center">
+        <div className="w-full max-w-3xl">
+          {/* Unlock card — matches platform palette, deeper indigo for hierarchy below the hero */}
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-violet-700 via-indigo-700 to-blue-800 text-white p-7 sm:p-9 shadow-lg">
+            <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-white/10 blur-2xl" />
+            <div className="relative">
+              <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-white/15 backdrop-blur-sm text-[10.5px] font-bold tracking-wider uppercase mb-4">
+                <Target size={11} /> One-time step
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight max-w-xl">
+                Take the diagnostic test to unlock everything.
+              </h2>
+              <p className="text-white/85 text-[14px] mt-2.5 max-w-xl leading-relaxed">
+                30 questions across Quantitative, Logical, Verbal, and Data Interpretation —
+                takes ~30 minutes. Your study plan, practice queue, and reports are all built from your result.
+              </p>
+              <div className="mt-6 flex flex-col sm:flex-row gap-3">
+                <Link to="/student/diagnostic"
+                  className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-white text-violet-700 text-[14px] font-bold hover:bg-violet-50 transition-colors">
+                  Start diagnostic <ArrowRight size={14} />
+                </Link>
+                <span className="text-[12px] text-white/70 self-center">No login again — picks up where you stop.</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Locked features preview */}
+          <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { label: 'Practice',        Icon: ClipboardList },
+              { label: 'Tests',           Icon: BarChart2 },
+              { label: 'Study Plan',      Icon: Calendar },
+              { label: 'Study Materials', Icon: BookOpen },
+            ].map(({ label, Icon }) => (
+              <div key={label} className="rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-[#0e0e15] p-4 opacity-70">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-white/[0.04] flex items-center justify-center">
+                    <Icon size={14} className="text-slate-400 dark:text-slate-500" />
+                  </div>
+                  <Lock size={12} className="text-slate-300 dark:text-slate-600" />
+                </div>
+                <p className="text-[13px] font-semibold text-slate-700 dark:text-slate-300">{label}</p>
+                <p className="text-[10.5px] text-slate-400 mt-0.5">Unlock after diagnostic</p>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -87,6 +160,16 @@ export default function StudentDashboard() {
       </div>
 
       <div className="flex-1 p-5 md:p-8">
+        {/* Today's focus — the single most-impactful thing to do right now */}
+        <div className="mb-6">
+          <DailyFocusCard />
+        </div>
+
+        {/* Mistakes queue summary — hidden when empty */}
+        <div className="mb-6">
+          <MistakesCard />
+        </div>
+
         {/* Stat cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           {STAT_CARDS.map(({ label, value, icon: Icon, tint, bg }) => (
@@ -98,6 +181,11 @@ export default function StudentDashboard() {
               <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1">{label}</p>
             </div>
           ))}
+        </div>
+
+        {/* Mastery — the journey from 0% to placement-ready on every topic */}
+        <div className="mb-6">
+          <MasteryPanel />
         </div>
 
         {/* Plan progress */}
@@ -217,15 +305,15 @@ export default function StudentDashboard() {
 
           <div className={CARD + ' p-6'}>
             <div className="flex items-center gap-2 mb-4">
-              <Trophy size={15} className="text-amber-500" />
+              <Sparkles size={15} className="text-amber-500" />
               <h2 className="text-[15px] font-semibold text-slate-900 dark:text-white tracking-tight">Quick actions</h2>
             </div>
             <div className="grid grid-cols-2 gap-2.5">
               {[
-                { to: "/student/materials",   label: "Study Materials", Icon: BookOpen },
-                { to: "/student/practice",    label: "Practice now",    Icon: Zap },
-                { to: "/student/companies",   label: "Company corner",  Icon: Calendar },
-                { to: "/student/leaderboard", label: "Leaderboard",     Icon: Trophy },
+                { to: "/student/materials",  label: "Study Materials", Icon: BookOpen },
+                { to: "/student/practice",   label: "Practice now",    Icon: Zap },
+                { to: "/student/plan",       label: "My study plan",   Icon: Calendar },
+                { to: "/student/companies",  label: "Company corner",  Icon: Calendar },
               ].map(({ to, label, Icon }) => (
                 <Link key={to} to={to}
                   className="group flex items-center gap-2.5 p-3 rounded-lg border border-slate-200 dark:border-white/[0.06] hover:border-violet-300 dark:hover:border-violet-500/40 hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors">

@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import api from "../../services/api";
+import toast from "react-hot-toast";
 import { ClipboardList, Clock, Maximize2, AlertTriangle, ChevronLeft, ChevronRight, CheckCircle2, BookOpen, Zap } from "lucide-react";
 
 const C = "bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800";
@@ -240,7 +241,11 @@ export default function Tests() {
           }
         }
       })
-      .catch(() => {})
+      .catch(err => {
+        const msg = err.response?.data?.error || err.message || 'Failed to load tests';
+        toast.error(msg);
+        console.error('[Tests] load failed:', err.response?.data || err);
+      })
       .finally(() => setLoading(false));
   }, [location, navigate]);
 
@@ -329,7 +334,7 @@ export default function Tests() {
         )}
 
         {loading ? (
-        <div className="space-y-3">{[...Array(4)].map((_, i) => <div key={i} className="h-20 bg-gray-200 dark:bg-gray-800 animate-pulse rounded-2xl" />)}</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{[...Array(4)].map((_, i) => <div key={i} className="h-52 bg-gray-200 dark:bg-gray-800 animate-pulse rounded-2xl" />)}</div>
       ) : tests.length === 0 ? (
         <div className={"rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700 p-14 text-center " + C}>
           <ClipboardList size={36} className="text-gray-300 mx-auto mb-3" />
@@ -337,40 +342,130 @@ export default function Tests() {
           <p className="text-gray-400 text-sm mt-1">Check back later for scheduled tests</p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {tests.map(t => (
-            <div key={t.test_id} className={"rounded-2xl border p-5 flex items-center gap-4 " + C}>
-              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
-                <ClipboardList size={18} className="text-white" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{t.title}</p>
-                <div className="flex items-center gap-3 mt-1">
-                  <span className="text-xs text-gray-400 flex items-center gap-1"><Clock size={10} />{t.duration_minutes} min</span>
-                  <span className="text-xs text-gray-400">{t.total_questions || t.question_count || "?"} questions</span>
-                  {t.status === "completed" && <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Completed</span>}
-                  {t.attempt_count > 0 && (
-                    <span className="text-xs font-semibold text-purple-600 dark:text-purple-400">
-                      Attempted {t.attempt_count}x
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {tests.map(t => {
+            const qCount = t.question_count ?? t.total_questions ?? null;
+            const isProctored = t.mode === 'test';
+            const isCompleted = t.attempt_status === 'submitted' || t.status === 'completed';
+            const used = Number(t.attempt_count) || 0;
+            const isAttempted = used > 0;
+            const max = parseInt(t.max_attempts, 10);
+            const unlimited = !(Number.isFinite(max) && max > 0);
+            const remaining = unlimited ? Infinity : Math.max(0, max - used);
+            const exhausted = !unlimited && remaining === 0;
+            return (
+              <div key={t.test_id} className={"rounded-2xl border overflow-hidden flex flex-col group " + C}>
+                {/* Top accent strip */}
+                <div className={`h-1.5 ${
+                  isCompleted ? 'bg-gradient-to-r from-emerald-400 to-teal-500'
+                  : isProctored ? 'bg-gradient-to-r from-violet-400 to-indigo-500'
+                                : 'bg-gradient-to-r from-blue-400 to-cyan-500'
+                }`} />
+
+                <div className="flex-1 p-5">
+                  {/* Header: icon + title + status */}
+                  <div className="flex items-start gap-3 mb-3">
+                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                      isProctored
+                        ? 'bg-gradient-to-br from-violet-500 to-indigo-600'
+                        : 'bg-gradient-to-br from-blue-500 to-cyan-600'
+                    }`}>
+                      <ClipboardList size={18} className="text-white" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[14.5px] font-semibold text-slate-900 dark:text-white truncate leading-tight">{t.title}</p>
+                      {t.description && (
+                        <p className="text-[11.5px] text-slate-500 dark:text-slate-400 line-clamp-1 mt-0.5">{t.description}</p>
+                      )}
+                    </div>
+                    {isCompleted && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-md flex-shrink-0">
+                        ✓ Done
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Meta chips */}
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold bg-slate-100 dark:bg-white/[0.05] text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-md">
+                      <Clock size={10} /> {t.duration_minutes} min
                     </span>
+                    {t.total_marks != null && (
+                      <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold bg-slate-100 dark:bg-white/[0.05] text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-md">
+                        {Math.round(Number(t.total_marks))} marks
+                      </span>
+                    )}
+                    <span className={`inline-flex items-center gap-1 text-[10.5px] font-semibold px-2 py-0.5 rounded-md ${
+                      isProctored
+                        ? 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300'
+                        : 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300'
+                    }`}>
+                      {isProctored ? 'Proctored' : 'Practice'}
+                    </span>
+                  </div>
+
+                  {/* Counter boxes — Questions + Attempts (used / max) */}
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    <div className="rounded-lg border border-violet-200/60 dark:border-violet-500/20 bg-violet-50/50 dark:bg-violet-500/[0.06] p-2.5">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-violet-700 dark:text-violet-300">Questions</p>
+                      <p className="text-lg font-semibold text-slate-900 dark:text-white mt-0.5">{qCount ?? '—'}</p>
+                    </div>
+                    <div className={`rounded-lg border p-2.5 ${
+                      exhausted
+                        ? 'border-rose-200/60 dark:border-rose-500/20 bg-rose-50/50 dark:bg-rose-500/[0.06]'
+                        : 'border-emerald-200/60 dark:border-emerald-500/20 bg-emerald-50/50 dark:bg-emerald-500/[0.06]'
+                    }`}>
+                      <p className={`text-[10px] font-bold uppercase tracking-wider ${
+                        exhausted ? 'text-rose-700 dark:text-rose-300' : 'text-emerald-700 dark:text-emerald-300'
+                      }`}>
+                        {unlimited ? 'Attempts' : 'Attempts left'}
+                      </p>
+                      <p className="text-lg font-semibold text-slate-900 dark:text-white mt-0.5 flex items-center gap-1.5">
+                        {unlimited
+                          ? <><span>∞</span><span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400">Unlimited</span></>
+                          : <><span>{remaining}</span><span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">/ {max}</span></>}
+                      </p>
+                      {t.accuracy_percent != null && (
+                        <p className="text-[10.5px] text-slate-500 dark:text-slate-400 mt-0.5">
+                          Best: {Math.round(Number(t.accuracy_percent))}%
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Schedule note if set */}
+                  {t.start_time && (
+                    <p className="text-[10.5px] text-slate-500 dark:text-slate-400 mb-3">
+                      Window: {new Date(t.start_time).toLocaleString()}
+                      {t.end_time && ` → ${new Date(t.end_time).toLocaleString()}`}
+                    </p>
                   )}
                 </div>
+
+                {/* CTA */}
+                <div className="px-5 pb-5 mt-auto">
+                  <button onClick={() => start(t)}
+                    disabled={starting === t.test_id || exhausted}
+                    className={`w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-white text-[13px] font-bold transition-opacity disabled:opacity-50 disabled:cursor-not-allowed ${
+                      exhausted
+                        ? 'bg-slate-400 dark:bg-slate-700'
+                        : isCompleted
+                          ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:opacity-90'
+                          : 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:opacity-90'
+                    }`}>
+                    <Maximize2 size={13} />
+                    {starting === t.test_id
+                      ? 'Starting…'
+                      : exhausted
+                        ? 'No attempts left'
+                        : isCompleted
+                          ? 'Retake test'
+                          : isAttempted ? 'Resume / Retake' : 'Start test'}
+                  </button>
+                </div>
               </div>
-              {t.attempt_status === "submitted" || t.status === "completed" ? (
-                <button onClick={() => start(t)} disabled={starting === t.test_id}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-bold hover:opacity-90 transition-opacity flex-shrink-0 disabled:opacity-60">
-                  <Maximize2 size={12} />
-                  {starting === t.test_id ? "Starting..." : "Retake"}
-                </button>
-              ) : (
-                <button onClick={() => start(t)} disabled={starting === t.test_id}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-xs font-bold hover:opacity-90 transition-opacity flex-shrink-0 disabled:opacity-60">
-                  <Maximize2 size={12} />
-                  {starting === t.test_id ? "Starting..." : "Start"}
-                </button>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
       </div>

@@ -1,23 +1,24 @@
 import { useState, useEffect } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate, Link } from 'react-router-dom';
 import {
   BookOpen, BarChart2, ClipboardList, Calendar, Building2,
-  Trophy, MessageCircle, LayoutDashboard, LogOut,
-  Sun, Moon, Sparkles
+  LayoutDashboard, LogOut, Sun, Moon, Sparkles, Lock, Target, ArrowRight, RotateCcw
 } from 'lucide-react';
 import useAuthStore from '../../stores/authStore';
 import toast from 'react-hot-toast';
 
+// `locked: false` items are always reachable. The Diagnostic + Dashboard items
+// stay unlocked while the diagnostic is pending; everything else is gated.
 const navItems = [
-  { to: '/student/dashboard',   icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/student/materials',   icon: BookOpen,        label: 'Study Materials' },
-  { to: '/student/practice',    icon: ClipboardList,   label: 'Practice' },
-  { to: '/student/tests',       icon: BarChart2,       label: 'Tests' },
-  { to: '/student/reports',     icon: BarChart2,       label: 'Reports' },
-  { to: '/student/plan',        icon: Calendar,        label: 'Study Plan' },
-  { to: '/student/companies',   icon: Building2,       label: 'Company Corner' },
-  { to: '/student/leaderboard', icon: Trophy,          label: 'Leaderboard' },
-  { to: '/student/doubts',      icon: MessageCircle,   label: 'Doubts' },
+  { to: '/student/diagnostic', icon: Target,          label: 'Diagnostic',     alwaysOpen: true },
+  { to: '/student/dashboard',  icon: LayoutDashboard, label: 'Dashboard',      alwaysOpen: true },
+  { to: '/student/materials',  icon: BookOpen,        label: 'Study Materials' },
+  { to: '/student/practice',   icon: ClipboardList,   label: 'Practice' },
+  { to: '/student/mistakes',   icon: RotateCcw,       label: 'Review' },
+  { to: '/student/tests',      icon: BarChart2,       label: 'Tests' },
+  { to: '/student/reports',    icon: BarChart2,       label: 'Reports' },
+  { to: '/student/plan',       icon: Calendar,        label: 'Study Plan' },
+  { to: '/student/simulator',  icon: Building2,       label: 'Company Simulator' },
 ];
 
 function initials(name) {
@@ -42,8 +43,15 @@ export default function StudentLayout() {
     navigate('/login');
   };
 
+  const diagnosticDone = !!user?.diagnostic_completed_at;
+  // Hide the diagnostic nav item once the student has finished it.
+  const visibleNav = navItems.filter(item =>
+    !(item.to === '/student/diagnostic' && diagnosticDone)
+  );
+
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-[#09090d] transition-colors">
+      {/* ── Sidebar ── */}
       <aside className="w-60 flex-shrink-0 flex flex-col z-10
                         bg-white dark:bg-[#0c0c12]
                         border-r border-slate-200 dark:border-white/[0.06]">
@@ -67,28 +75,46 @@ export default function StudentLayout() {
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-0.5">
-          {navItems.map(({ to, icon: Icon, label }) => (
-            <NavLink key={to} to={to}
-              className={({ isActive }) =>
-                'group flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13.5px] font-medium transition-colors ' +
-                (isActive
-                  ? 'bg-slate-100 dark:bg-white/[0.06] text-slate-900 dark:text-white'
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100/60 dark:hover:bg-white/[0.03]')
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <Icon
-                    size={15}
-                    className={isActive
-                      ? 'text-violet-600 dark:text-violet-400'
-                      : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300'}
-                  />
-                  {label}
-                </>
-              )}
-            </NavLink>
-          ))}
+          {visibleNav.map(({ to, icon: Icon, label, alwaysOpen }) => {
+            const locked = !diagnosticDone && !alwaysOpen;
+            if (locked) {
+              return (
+                <div key={to}
+                  className="group relative flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13.5px] font-medium text-slate-300 dark:text-slate-600 cursor-not-allowed select-none"
+                  title="Take the diagnostic test to unlock"
+                >
+                  <Icon size={15} className="text-slate-300 dark:text-slate-600" />
+                  <span className="flex-1">{label}</span>
+                  <Lock size={11} className="text-slate-300 dark:text-slate-600" />
+                </div>
+              );
+            }
+            return (
+              <NavLink key={to} to={to}
+                className={({ isActive }) =>
+                  'group flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13.5px] font-medium transition-colors ' +
+                  (isActive
+                    ? 'bg-slate-100 dark:bg-white/[0.06] text-slate-900 dark:text-white'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100/60 dark:hover:bg-white/[0.03]')
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    <Icon
+                      size={15}
+                      className={isActive
+                        ? 'text-violet-600 dark:text-violet-400'
+                        : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300'}
+                    />
+                    <span className="flex-1">{label}</span>
+                    {to === '/student/diagnostic' && !diagnosticDone && (
+                      <span className="text-[9px] font-bold tracking-wider uppercase px-1.5 py-0.5 rounded bg-violet-600 text-white">New</span>
+                    )}
+                  </>
+                )}
+              </NavLink>
+            );
+          })}
         </nav>
 
         {/* Footer */}
@@ -118,6 +144,21 @@ export default function StudentLayout() {
       </aside>
 
       <main className="flex-1 overflow-y-auto">
+        {/* Global diagnostic banner — matches platform violet/indigo palette */}
+        {!diagnosticDone && (
+          <div className="bg-gradient-to-r from-violet-600 via-indigo-600 to-blue-600 text-white px-5 py-2.5 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <Target size={15} className="flex-shrink-0" />
+              <p className="text-[13px] font-medium truncate">
+                <span className="font-bold">Take the diagnostic test</span> to unlock Practice, Tests, Materials, your personalised Study Plan and more.
+              </p>
+            </div>
+            <Link to="/student/diagnostic"
+              className="flex-shrink-0 inline-flex items-center gap-1.5 bg-white text-violet-700 text-[12px] font-bold px-3 py-1.5 rounded-md hover:bg-violet-50 transition-colors">
+              Start now <ArrowRight size={12} />
+            </Link>
+          </div>
+        )}
         <Outlet />
       </main>
     </div>

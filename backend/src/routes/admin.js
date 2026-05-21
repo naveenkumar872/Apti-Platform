@@ -5,6 +5,10 @@ const fs = require('fs');
 const multer = require('multer');
 const { authenticate, authorize } = require('../middleware/auth');
 const adminController = require('../controllers/adminController');
+const diagnosticController = require('../controllers/diagnosticController');
+const masteryController = require('../controllers/masteryController');
+const questionImportController = require('../controllers/questionImportController');
+const simulatorController = require('../controllers/simulatorController');
 
 // All admin routes require authentication
 router.use(authenticate);
@@ -66,6 +70,21 @@ router.post('/tests/ai-generate', adminController.aiGenerateQuestions);
 router.get('/questions/stats', adminController.getQuestionBankStats);
 router.get('/questions', adminController.getQuestions);
 router.post('/questions', adminController.createQuestion);
+
+// Bulk import — uses an in-memory multer (CSV/XLSX, max 5MB).
+// Place these BEFORE the :id routes so 'import' isn't captured as a question id.
+const importUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ok = /\.(csv|xlsx?|tsv)$/i.test(file.originalname);
+    cb(ok ? null : new Error('Only CSV, XLSX, or XLS files are accepted'), ok);
+  },
+});
+router.get ('/questions/import/template', questionImportController.downloadTemplate);
+router.post('/questions/import/parse',    importUpload.single('file'), questionImportController.parseImport);
+router.post('/questions/import/commit',   questionImportController.commitImport);
+
 router.put('/questions/:id', adminController.updateQuestion);
 router.delete('/questions/:id', adminController.deleteQuestion);
 
@@ -79,6 +98,23 @@ router.delete('/materials/:id', adminController.deleteMaterial);
 router.get('/reports/stats', adminController.getReportStats);
 router.get('/reports/tests/:id', adminController.getTestReport);
 router.get('/reports/students/:id', adminController.getStudentReport);
+
+// Diagnostics — view every student's first-time aptitude assessment
+router.get('/diagnostics',             diagnosticController.adminList);
+router.get('/diagnostics/:student_id', diagnosticController.adminDetail);
+
+// Mastery for a single student (admin viewing a student's progress)
+router.get('/students/:student_id/mastery', masteryController.getMasteryForStudent);
+
+// Company simulator attempts — admin visibility
+router.get('/simulator/attempts',       simulatorController.adminList);
+router.get('/simulator/attempts/:id',   simulatorController.adminDetail);
+
+// Company simulator pattern management
+router.get   ('/simulator/patterns',       simulatorController.adminListPatterns);
+router.post  ('/simulator/patterns',       simulatorController.adminCreatePattern);
+router.put   ('/simulator/patterns/:id',   simulatorController.adminUpdatePattern);
+router.delete('/simulator/patterns/:id',   simulatorController.adminDeletePattern);
 
 // Study Plans
 router.get('/plans/:student_id', adminController.getStudentPlan);

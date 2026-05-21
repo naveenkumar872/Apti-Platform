@@ -44,16 +44,24 @@ const register = async (req, res, next) => {
       [user_id, otp, otp_expires]
     );
 
-    // Send OTP email
+    // Send OTP email — surface delivery status so the frontend can guide the user.
+    let email_sent = true;
     try {
       await sendOTPEmail(email, name, otp);
     } catch (emailErr) {
-      console.error('Email send failed:', emailErr.message);
+      email_sent = false;
+      console.error('[OTP email failed]', emailErr.message);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[DEV OTP for ${email}] ${otp}  (expires in 10m)`);
+      }
     }
 
     res.status(201).json({
-      message: 'Registration successful. Check your email for the OTP.',
-      user_id
+      message: email_sent
+        ? 'Registration successful. Check your email for the OTP.'
+        : 'Registration successful, but the OTP email failed to send. Use Resend to try again.',
+      user_id,
+      email_sent,
     });
   } catch (err) {
     next(err);
@@ -126,9 +134,21 @@ const resendOTP = async (req, res, next) => {
       [user_id, otp, otp_expires]
     );
 
-    await sendOTPEmail(user.rows[0].email, user.rows[0].name, otp);
+    let email_sent = true;
+    try {
+      await sendOTPEmail(user.rows[0].email, user.rows[0].name, otp);
+    } catch (emailErr) {
+      email_sent = false;
+      console.error('[OTP email failed]', emailErr.message);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[DEV OTP for ${user.rows[0].email}] ${otp}  (expires in 10m)`);
+      }
+    }
 
-    res.json({ message: 'OTP resent successfully' });
+    res.json({
+      message: email_sent ? 'OTP resent successfully' : 'Could not send OTP email. Please try again in a minute.',
+      email_sent,
+    });
   } catch (err) {
     next(err);
   }
@@ -143,7 +163,8 @@ const login = async (req, res, next) => {
 
     const result = await query(
       `SELECT user_id, name, email, password_hash, role, is_verified, is_active,
-              college, branch, year, target_companies, profile_photo_url
+              college, branch, year, target_companies, profile_photo_url,
+              diagnostic_completed_at
        FROM users WHERE email = ?`,
       [email]
     );
@@ -364,7 +385,8 @@ const getMe = async (req, res, next) => {
   try {
     const result = await query(
       `SELECT user_id, name, email, role, college, branch, year, target_companies,
-              target_exam_date, profile_photo_url, batch_id, is_verified, created_at, last_login
+              target_exam_date, profile_photo_url, batch_id, is_verified, created_at, last_login,
+              diagnostic_completed_at
        FROM users WHERE user_id = ?`,
       [req.user.user_id]
     );

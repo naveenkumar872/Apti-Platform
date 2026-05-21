@@ -841,38 +841,65 @@ export default function StudyMaterials() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredNotes.map(note => (
-                  <div key={note.material_id} className={"rounded-2xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all overflow-hidden " + CARD}>
-                    <div className="h-1.5 bg-gradient-to-r from-amber-400 to-orange-500" />
-                    <div className="p-4">
-                      <div className="flex items-start gap-3 mb-3">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center flex-shrink-0">
-                          <FileText size={17} className="text-white" />
+                {filteredNotes.map(note => {
+                  // Pick icon, label, and accent per material type so videos, PDFs,
+                  // and links all render coherently in the same tab.
+                  const meta = (() => {
+                    switch (note.type) {
+                      case 'video': return { Icon: Play,     label: 'Watch video', grad: 'from-rose-500 to-red-600' };
+                      case 'pdf':   return { Icon: FileText, label: 'View PDF',    grad: 'from-amber-400 to-orange-500' };
+                      case 'link':  return { Icon: ExternalLink, label: 'Open link', grad: 'from-blue-500 to-indigo-600' };
+                      case 'ppt':   return { Icon: FileText, label: 'Open PPT',    grad: 'from-purple-500 to-fuchsia-600' };
+                      case 'doc':   return { Icon: FileText, label: 'Open doc',    grad: 'from-slate-500 to-slate-700' };
+                      default:      return { Icon: FileText, label: 'Open',        grad: 'from-amber-400 to-orange-500' };
+                    }
+                  })();
+                  const handleOpen = () => {
+                    if (note.type === 'pdf' && note.file_url) {
+                      setPdfModal({ url: note.file_url, title: note.title });
+                    } else if (note.file_url) {
+                      window.open(note.file_url, '_blank', 'noopener,noreferrer');
+                    }
+                  };
+                  return (
+                    <div key={note.material_id} className={"rounded-2xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all overflow-hidden " + CARD}>
+                      <div className={`h-1.5 bg-gradient-to-r ${meta.grad}`} />
+                      <div className="p-4">
+                        <div className="flex items-start gap-3 mb-3">
+                          <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${meta.grad} flex items-center justify-center flex-shrink-0`}>
+                            <meta.Icon size={16} className="text-white" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-gray-800 dark:text-gray-100 text-sm line-clamp-2">{note.title}</p>
+                            {note.teacher_name && <p className="text-xs text-gray-400 mt-0.5">by {note.teacher_name}</p>}
+                          </div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 flex-shrink-0">
+                            {note.type}
+                          </span>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-gray-800 dark:text-gray-100 text-sm line-clamp-2">{note.title}</p>
-                          {note.teacher_name && <p className="text-xs text-gray-400 mt-0.5">by {note.teacher_name}</p>}
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5 mb-3">
-                        {note.subject_name && <span className="text-xs bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-300 px-2 py-0.5 rounded-full font-medium">{note.subject_name}</span>}
-                        {note.topic_name && <span className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 px-2 py-0.5 rounded-full">{note.topic_name}</span>}
-                      </div>
-                      <div className="flex gap-2">
-                        <button onClick={() => setPdfModal({ url: note.file_url, title: note.title })}
-                          className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-xs font-semibold py-2 rounded-xl hover:opacity-90">
-                          <FileText size={13} /> View PDF
-                        </button>
-                        {note.download_allowed && (
-                          <a href={note.file_url} download target="_blank" rel="noreferrer"
-                            className="p-2 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-indigo-600 hover:border-indigo-300 transition-colors">
-                            <ExternalLink size={13} />
-                          </a>
+                        {note.description && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mb-3">{note.description}</p>
                         )}
+                        <div className="flex flex-wrap gap-1.5 mb-3">
+                          {note.subject_name && <span className="text-xs bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-300 px-2 py-0.5 rounded-full font-medium">{note.subject_name}</span>}
+                          {note.topic_name && <span className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 px-2 py-0.5 rounded-full">{note.topic_name}</span>}
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={handleOpen}
+                            className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-xs font-semibold py-2 rounded-xl hover:opacity-90">
+                            <meta.Icon size={13} /> {meta.label}
+                          </button>
+                          {note.download_allowed && note.file_url && (
+                            <a href={note.file_url} download target="_blank" rel="noreferrer"
+                              className="p-2 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-indigo-600 hover:border-indigo-300 transition-colors">
+                              <ExternalLink size={13} />
+                            </a>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

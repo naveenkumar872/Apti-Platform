@@ -2,18 +2,21 @@ import { useState, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, ClipboardList, CalendarDays, FileText,
-  Users, BarChart2, LogOut, Sun, Moon, Sparkles
+  Users, BarChart2, LogOut, Sun, Moon, Sparkles, Target, HelpCircle, Building2
 } from 'lucide-react';
 import useAuthStore from '../../stores/authStore';
 import toast from 'react-hot-toast';
 
 const navItems = [
-  { to: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/admin/tests',     icon: ClipboardList,   label: 'Test Builder' },
-  { to: '/admin/questions', icon: CalendarDays,    label: 'Study Plans' },
-  { to: '/admin/materials', icon: FileText,        label: 'Materials' },
-  { to: '/admin/users',     icon: Users,           label: 'Users & Batches' },
-  { to: '/admin/reports',   icon: BarChart2,       label: 'Reports' },
+  { to: '/admin/dashboard',     icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/admin/diagnostics',   icon: Target,          label: 'Diagnostics' },
+  { to: '/admin/tests',         icon: ClipboardList,   label: 'Test Builder' },
+  { to: '/admin/question-bank', icon: HelpCircle,      label: 'Question Bank' },
+  { to: '/admin/simulator',     icon: Building2,       label: 'Simulator' },
+  { to: '/admin/questions',     icon: CalendarDays,    label: 'Study Plans' },
+  { to: '/admin/materials',     icon: FileText,        label: 'Materials' },
+  { to: '/admin/users',         icon: Users,           label: 'Users' },
+  { to: '/admin/reports',       icon: BarChart2,       label: 'Reports' },
 ];
 
 export default function AdminLayout() {

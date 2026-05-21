@@ -1,4 +1,5 @@
 const { query } = require('../config/database');
+const { enqueueWrongAnswer } = require('./mistakesController');
 
 /** GET /student/dashboard */
 const getDashboard = async (req, res, next) => {
@@ -217,18 +218,25 @@ const bookmarkMaterial = async (req, res, next) => {
   }
 };
 
-/** GET /student/notes */
+/** GET /student/notes
+ *
+ * "Teacher Notes" tab: every material an admin/teacher manually uploaded —
+ * regardless of file type. AI-seeded materials (source='ai') are excluded so
+ * this tab stays human-curated.
+ */
 const getNotes = async (req, res, next) => {
   try {
-    const { subject_id, topic_id } = req.query;
-    let where = "WHERE m.type = 'note' AND m.is_active = 1";
+    const { subject_id, topic_id, type } = req.query;
+    let where = "WHERE m.is_active = 1 AND (m.source = 'manual' OR m.source IS NULL) AND m.type <> 'shortcut' AND m.type <> 'formula'";
     const params = [];
 
     if (subject_id) { where += ' AND m.subject_id = ?'; params.push(subject_id); }
-    if (topic_id) { where += ' AND m.topic_id = ?'; params.push(topic_id); }
+    if (topic_id)   { where += ' AND m.topic_id = ?';   params.push(topic_id); }
+    if (type)       { where += ' AND m.type = ?';       params.push(type); }
 
     const result = await query(
-      `SELECT m.material_id, m.title, m.file_url, m.download_allowed, m.created_at,
+      `SELECT m.material_id, m.title, m.type, m.file_url, m.description,
+              m.download_allowed, m.created_at,
               u.name as teacher_name, s.name as subject_name, t.name as topic_name
        FROM materials m
        LEFT JOIN users u ON u.user_id = m.uploaded_by
@@ -440,7 +448,16 @@ const submitPracticeAnswer = async (req, res, next) => {
     const { correct_answer, explanation } = question.rows[0];
     const is_correct = selected_answer === correct_answer;
 
-    // Store the answer
+    // Is this the student's FIRST answer for this question in this session?
+    // If so, we'll count it toward the skill profile; otherwise it's just a re-submission
+    // (UI letting them change their answer) and we leave the profile alone.
+    const existing = await query(
+      'SELECT 1 FROM practice_answers WHERE session_id=? AND question_id=? LIMIT 1',
+      [session_id, question_id]
+    );
+    const is_first_submission = existing.rows.length === 0;
+
+    // Store / update the answer
     await query(
       `INSERT INTO practice_answers (session_id, question_id, selected_answer, is_correct, time_taken_seconds)
        VALUES (?, ?, ?, ?, ?)
@@ -448,8 +465,20 @@ const submitPracticeAnswer = async (req, res, next) => {
       [session_id, question_id, selected_answer, is_correct ? 1 : 0, time_taken_seconds || 0]
     );
 
-    // Update skill profile
-    if (is_correct !== undefined) {
+    // Wrong answer? Queue it for replay (only on first submission so
+    // re-trying the same question in-session doesn't re-enqueue).
+    if (is_first_submission && !is_correct) {
+      enqueueWrongAnswer({
+        student_id:       req.user.user_id,
+        question_id,
+        selected_answer,
+        source:           'practice',
+        source_id:        session_id,
+      });
+    }
+
+    // Update skill profile only on the first submission so re-submits don't inflate attempts.
+    if (is_first_submission) {
       const qTopicResult = await query(
         'SELECT t.topic_id FROM concepts c JOIN topics t ON t.topic_id = c.topic_id JOIN questions q ON q.concept_id = c.concept_id WHERE q.question_id = ?',
         [question_id]
@@ -529,28 +558,74 @@ const getAssignedTests = async (req, res, next) => {
     const userBatch = await query('SELECT batch_id FROM users WHERE user_id = ?', [student_id]);
     const batch_id = userBatch.rows[0]?.batch_id;
 
+    // 1. Pull every test the student is allowed to see.
+    //    Note: TiDB doesn't support correlated subqueries in JOIN ON, so the
+    //    "latest attempt" lookup is done as a second query and merged in JS.
+    //    `COALESCE(...,0)` guards against NULL JSON paths (e.g. older rows
+    //    where assigned_to wasn't set).
     const tests = await query(
       `SELECT t.test_id, t.title, t.description, t.mode, t.duration_minutes,
-              t.total_marks, t.start_time, t.end_time, t.status,
-              ta.attempt_id, ta.status as attempt_status, ta.score, ta.accuracy_percent,
-              (SELECT COUNT(*) FROM test_attempts ta2 WHERE ta2.test_id = t.test_id AND ta2.student_id = ?) as attempt_count
+              t.total_marks, t.start_time, t.end_time, t.status, t.max_attempts,
+              (SELECT COUNT(*) FROM test_questions tq WHERE tq.test_id = t.test_id) AS question_count
        FROM tests t
-       LEFT JOIN test_attempts ta ON ta.attempt_id = (
-         SELECT ta3.attempt_id FROM test_attempts ta3
-         WHERE ta3.test_id = t.test_id AND ta3.student_id = ?
-         ORDER BY ta3.started_at DESC LIMIT 1
-       )
        WHERE t.status IN ('scheduled', 'live', 'completed')
          AND (
-           (JSON_LENGTH(t.assigned_to->'$.batch_ids') = 0 AND JSON_LENGTH(t.assigned_to->'$.student_ids') = 0)
-           OR (? IS NOT NULL AND JSON_CONTAINS(t.assigned_to->'$.batch_ids', JSON_QUOTE(?)))
-           OR JSON_CONTAINS(t.assigned_to->'$.student_ids', JSON_QUOTE(?))
+              t.assigned_to IS NULL
+           OR (COALESCE(JSON_LENGTH(t.assigned_to, '$.batch_ids'),   0) = 0
+               AND COALESCE(JSON_LENGTH(t.assigned_to, '$.student_ids'), 0) = 0)
+           OR (? IS NOT NULL AND JSON_CONTAINS(JSON_EXTRACT(t.assigned_to, '$.batch_ids'),  JSON_QUOTE(?)))
+           OR JSON_CONTAINS(JSON_EXTRACT(t.assigned_to, '$.student_ids'), JSON_QUOTE(?))
          )
-       ORDER BY t.start_time DESC`,
-      [student_id, student_id, batch_id, batch_id, student_id]
+       ORDER BY t.start_time DESC, t.test_id DESC`,
+      [batch_id, batch_id, student_id]
     );
 
-    res.json({ tests: tests.rows });
+    // 2. For each test, attach the student's latest attempt + total attempt count.
+    let attemptsByTest = new Map();   // test_id → latest attempt row
+    let attemptCountByTest = new Map();
+    if (tests.rows.length > 0) {
+      const ids = tests.rows.map(t => t.test_id);
+      const placeholders = ids.map(() => '?').join(',');
+
+      const [latestRows, countRows] = await Promise.all([
+        query(
+          `SELECT ta.test_id, ta.attempt_id, ta.status as attempt_status, ta.score, ta.accuracy_percent, ta.started_at
+           FROM test_attempts ta
+           WHERE ta.student_id = ? AND ta.test_id IN (${placeholders})
+           ORDER BY ta.test_id, ta.started_at DESC`,
+          [student_id, ...ids]
+        ),
+        query(
+          `SELECT test_id, COUNT(*) as attempt_count
+           FROM test_attempts
+           WHERE student_id = ? AND test_id IN (${placeholders})
+           GROUP BY test_id`,
+          [student_id, ...ids]
+        ),
+      ]);
+
+      for (const row of latestRows.rows) {
+        // First row per test_id (because we ordered by started_at DESC) is the latest.
+        if (!attemptsByTest.has(row.test_id)) attemptsByTest.set(row.test_id, row);
+      }
+      for (const row of countRows.rows) {
+        attemptCountByTest.set(row.test_id, Number(row.attempt_count) || 0);
+      }
+    }
+
+    const merged = tests.rows.map(t => {
+      const a = attemptsByTest.get(t.test_id) || {};
+      return {
+        ...t,
+        attempt_id:       a.attempt_id       || null,
+        attempt_status:   a.attempt_status   || null,
+        score:            a.score            || null,
+        accuracy_percent: a.accuracy_percent || null,
+        attempt_count:    attemptCountByTest.get(t.test_id) || 0,
+      };
+    });
+
+    res.json({ tests: merged });
   } catch (err) {
     next(err);
   }
@@ -565,7 +640,7 @@ const startTest = async (req, res, next) => {
 
     const testResult = await query(
       `SELECT t.test_id, t.title, t.duration_minutes, t.total_marks, t.mode,
-              t.shuffle_questions, t.proctoring_config, t.marking_scheme
+              t.shuffle_questions, t.proctoring_config, t.marking_scheme, t.max_attempts
        FROM tests t
        WHERE t.test_id = ? AND t.status IN ('live', 'scheduled') LIMIT 1`,
       [test_id]
@@ -587,14 +662,31 @@ const startTest = async (req, res, next) => {
     );
     testRow.questions = questionsResult.rows;
 
-    // Check if already attempted
+    // Resume any in-progress attempt without consuming a new one.
     const existing = await query(
       "SELECT attempt_id FROM test_attempts WHERE test_id=? AND student_id=? AND status='in_progress'",
       [test_id, student_id]
     );
-
     if (existing.rows.length > 0) {
       return res.json({ attempt_id: existing.rows[0].attempt_id, test: testRow });
+    }
+
+    // Enforce max_attempts cap. NULL / 0 = unlimited.
+    const maxAttempts = Number.isFinite(parseInt(testRow.max_attempts, 10)) && parseInt(testRow.max_attempts, 10) > 0
+      ? parseInt(testRow.max_attempts, 10)
+      : null;
+    if (maxAttempts !== null) {
+      const usedRow = await query(
+        'SELECT COUNT(*) AS used FROM test_attempts WHERE test_id=? AND student_id=?',
+        [test_id, student_id]
+      );
+      const used = parseInt(usedRow.rows[0]?.used, 10) || 0;
+      if (used >= maxAttempts) {
+        return res.status(403).json({
+          error: `You've used all ${maxAttempts} attempt${maxAttempts === 1 ? '' : 's'} for this test.`,
+          code: 'ATTEMPTS_EXHAUSTED',
+        });
+      }
     }
 
     const attempt_id = uuidv4();
@@ -665,12 +757,13 @@ const submitTest = async (req, res, next) => {
       return res.status(400).json({ error: 'Test already submitted' });
     }
 
-    // Calculate score
+    // Calculate score. LEFT JOIN test_questions so an answer still scores even
+    // if its junction row was edited after the attempt started; fall back to 1 mark.
     const answers = await query(
-      `SELECT aa.question_id, aa.selected_answer, q.correct_answer, tq.marks
+      `SELECT aa.question_id, aa.selected_answer, q.correct_answer, COALESCE(tq.marks, 1) AS marks
        FROM attempt_answers aa
        JOIN questions q ON q.question_id = aa.question_id
-       JOIN test_questions tq ON tq.test_id = ? AND tq.question_id = aa.question_id
+       LEFT JOIN test_questions tq ON tq.test_id = ? AND tq.question_id = aa.question_id
        WHERE aa.attempt_id = ?`,
       [attempt.rows[0].test_id, attempt_id]
     );
@@ -681,19 +774,29 @@ const submitTest = async (req, res, next) => {
 
     const updatedAnswers = answers.rows.map(a => {
       const is_correct = a.selected_answer === a.correct_answer;
+      const marks = Number(a.marks) || 1;
       if (a.selected_answer) {
-        score += is_correct ? (marking.correct * a.marks) : (marking.wrong * a.marks || 0);
+        score += is_correct ? (marking.correct * marks) : (marking.wrong * marks || 0);
         if (is_correct) correct_count++;
       }
       return { ...a, is_correct };
     });
 
-    // Update answers with is_correct
+    // Update answers with is_correct + queue wrong answers for replay.
     for (const ans of updatedAnswers) {
       await query(
         'UPDATE attempt_answers SET is_correct=? WHERE attempt_id=? AND question_id=?',
         [ans.is_correct ? 1 : 0, attempt_id, ans.question_id]
       );
+      if (!ans.is_correct && ans.selected_answer) {
+        enqueueWrongAnswer({
+          student_id:      attempt.rows[0].student_id,
+          question_id:     ans.question_id,
+          selected_answer: ans.selected_answer,
+          source:          'test',
+          source_id:       attempt_id,
+        });
+      }
     }
 
     const total_answered = answers.rows.filter(a => a.selected_answer).length;
@@ -1674,11 +1777,12 @@ const aiGenerateMaterials = async (req, res, next) => {
     const resolvedVideos = Array.isArray(aiContent.videos) ? aiContent.videos.slice(0, 3) : [];
     const materialRows = [];
 
-    // Columns that always exist in the materials table (no source column needed)
+    // AI-generated materials are tagged source='ai' so they remain separate
+    // from admin-uploaded materials (which appear in the "Teacher Notes" tab).
     const insertMaterial = async (mid, title, type, fileUrl, description) => {
       await query(
-        `INSERT INTO materials (material_id, title, type, file_url, description, subject_id, topic_id, concept_id, visibility, is_active)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'public', 1)`,
+        `INSERT INTO materials (material_id, title, type, file_url, description, subject_id, topic_id, concept_id, visibility, is_active, source)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'public', 1, 'ai')`,
         [mid, title, type, fileUrl, description, subject_id, topic_id, concept_id || null]
       );
     };

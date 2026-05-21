@@ -936,7 +936,7 @@ export default function Practice() {
       }
       const count = parseInt(cfgParsed.count || cfgParsed.num_questions) || 10;
       const difficulty = cfgParsed.difficulty || "mixed";
-      
+
       const payload = {
         topic_ids: cfgParsed.topic_ids || (cfgParsed.topic_id ? [cfgParsed.topic_id] : []),
         concept_ids: cfgParsed.concept_ids || [],
@@ -947,10 +947,29 @@ export default function Practice() {
         config: cfgParsed,
         task_id: cfgParsed.task_id || null
       };
-      
+
       handleStart(payload);
     }
   }, [location, navigate]);
+
+  // Deep link: /student/practice?topic_id=... auto-starts a focused session.
+  // Used by the Daily Focus card on the dashboard.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const topicId = params.get('topic_id');
+    if (!topicId) return;
+    // Clear the query string so a reload doesn't re-trigger.
+    navigate(location.pathname, { replace: true });
+    handleStart({
+      topic_ids:     [topicId],
+      num_questions: 10,
+      difficulty:    'mixed',
+      title:         'Focus practice',
+      method:        'topic',
+      config:        { topic_ids: [topicId], num_questions: 10, difficulty: 'mixed' },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleEnd = useCallback((data) => {
     setResult(data);

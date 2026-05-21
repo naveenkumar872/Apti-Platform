@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { Plus, Trash2, Wand2, ChevronRight, ClipboardList, Users, TrendingUp, Award, Clock, FileText, BookOpen, Shield, Calendar } from 'lucide-react';
+import { Plus, Trash2, Wand2, ChevronRight, ClipboardList, Users, TrendingUp, Award, Clock, FileText, BookOpen, Shield, Calendar, Edit3, HelpCircle, UserCheck } from 'lucide-react';
+import QuestionBankPicker from '../../components/admin/QuestionBankPicker';
+import EditTestModal from '../../components/admin/EditTestModal';
 
 const STEPS = ['Basic Info', 'Questions', 'Settings', 'Publish'];
 const C = "bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl";
@@ -64,6 +66,27 @@ function Step1({ data, onChange }) {
           <input type="number" value={data.duration_minutes} onChange={e => onChange({ duration_minutes: e.target.value })}
             className={inputCls} min={1} />
         </div>
+      </div>
+
+      {/* Max attempts per student */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          Max attempts per student
+        </label>
+        <input
+          type="number"
+          min={0}
+          max={20}
+          value={data.max_attempts ?? ''}
+          onChange={e => onChange({ max_attempts: e.target.value })}
+          className={inputCls}
+          placeholder="e.g. 3 (leave blank or 0 for unlimited)"
+        />
+        <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
+          {Number(data.max_attempts) > 0
+            ? `Each student can attempt this test up to ${Number(data.max_attempts)} time${Number(data.max_attempts) === 1 ? '' : 's'}.`
+            : 'Leave blank or 0 — students can attempt unlimited times.'}
+        </p>
       </div>
 
       {/* Assign To */}
@@ -239,6 +262,12 @@ function Step2({ questions, onAdd, onRemove, onAIGenerate }) {
 
   return (
     <div className="space-y-6">
+      {/* Pick from existing Question Bank */}
+      <QuestionBankPicker
+        alreadyAdded={questions}
+        onAdd={(picked) => onAIGenerate(picked)}
+      />
+
       {/* AI Generate */}
       <div className="p-4 bg-violet-50 dark:bg-violet-950/30 rounded-xl border border-violet-100 dark:border-violet-900/40">
         <h3 className="font-medium text-violet-800 dark:text-violet-300 mb-3 flex items-center gap-2"><Wand2 size={16}/> AI Question Generator</h3>
@@ -403,6 +432,7 @@ export default function TestBuilder() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     title: '', description: '', mode: 'practice', duration_minutes: 60,
+    max_attempts: '',
     shuffle_questions: false, shuffle_options: false,
     marking_scheme: { correct: 1, wrong: -0.25 },
     start_time: '', end_time: '',
@@ -411,6 +441,7 @@ export default function TestBuilder() {
   const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(null);   // test object being edited, or null
 
   useEffect(() => {
     api.get('/admin/tests')
@@ -436,7 +467,7 @@ export default function TestBuilder() {
       setTests(prev => [res.data.test, ...prev].filter(Boolean));
       toast.success('Test created!');
       setShowForm(false);
-      setForm({ title: '', description: '', mode: 'practice', duration_minutes: 60, shuffle_questions: false, shuffle_options: false, marking_scheme: { correct: 1, wrong: -0.25 }, start_time: '', end_time: '', assigned_to: { batch_ids: [], student_ids: [] } });
+      setForm({ title: '', description: '', mode: 'practice', duration_minutes: 60, max_attempts: '', shuffle_questions: false, shuffle_options: false, marking_scheme: { correct: 1, wrong: -0.25 }, start_time: '', end_time: '', assigned_to: { batch_ids: [], student_ids: [] } });
       setQuestions([]);
       setStep(0);
     } catch (err) {
@@ -446,10 +477,14 @@ export default function TestBuilder() {
 
   const publishTest = async (testId) => {
     try {
-      await api.post(`/admin/tests/${testId}/publish`);
+      await api.post(`/admin/tests/${testId}/publish`, {});
       setTests(prev => prev.map(t => t.test_id === testId ? { ...t, status: 'live' } : t));
       toast.success('Test published!');
-    } catch { toast.error('Failed to publish'); }
+    } catch (err) {
+      const msg = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to publish';
+      toast.error(msg);
+      console.error('Publish failed:', err.response?.data || err);
+    }
   };
 
   const deleteTest = async (testId) => {
@@ -504,9 +539,16 @@ export default function TestBuilder() {
             <h1 className="text-2xl md:text-[28px] font-semibold text-white tracking-tight">Test Builder</h1>
             <p className="text-white/70 text-sm mt-1.5">Create & manage student tests</p>
           </div>
-          <button onClick={() => setShowForm(!showForm)}
+          <button onClick={() => {
+              if (showForm && (form.title.trim() || questions.length > 0)) {
+                if (!window.confirm('Discard this draft and return to the test list?')) return;
+                setStep(0); setQuestions([]);
+                setForm({ title: '', description: '', mode: 'practice', duration_minutes: 60, max_attempts: '', shuffle_questions: false, shuffle_options: false, marking_scheme: { correct: 1, wrong: -0.25 }, start_time: '', end_time: '', assigned_to: { batch_ids: [], student_ids: [] } });
+              }
+              setShowForm(prev => !prev);
+            }}
             className="flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white text-sm font-semibold px-4 py-2.5 rounded-xl backdrop-blur-sm transition-colors mt-1 flex-shrink-0">
-            <Plus size={15} /> New Test
+            {showForm ? <>✕ Close</> : <><Plus size={15} /> New Test</>}
           </button>
         </div>
       </div>
@@ -561,8 +603,26 @@ export default function TestBuilder() {
                 </div>
               )}
 
-              <div className="flex justify-between mt-6">
-                <button onClick={() => setStep(s => Math.max(0, s - 1))} disabled={step === 0} className="px-4 py-2 border rounded-lg text-sm text-gray-600 dark:text-gray-300 dark:border-gray-700 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">Back</button>
+              <div className="flex items-center justify-between mt-6">
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setStep(s => Math.max(0, s - 1))} disabled={step === 0}
+                    className="px-4 py-2 border rounded-lg text-sm text-gray-600 dark:text-gray-300 dark:border-gray-700 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                    Back
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (form.title.trim() || questions.length > 0) {
+                        if (!window.confirm('Discard this draft and return to the test list?')) return;
+                      }
+                      setShowForm(false);
+                      setStep(0);
+                      setQuestions([]);
+                      setForm({ title: '', description: '', mode: 'practice', duration_minutes: 60, max_attempts: '', shuffle_questions: false, shuffle_options: false, marking_scheme: { correct: 1, wrong: -0.25 }, start_time: '', end_time: '', assigned_to: { batch_ids: [], student_ids: [] } });
+                    }}
+                    className="px-4 py-2 border border-rose-300 dark:border-rose-500/30 text-rose-600 dark:text-rose-400 rounded-lg text-sm hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors">
+                    Cancel
+                  </button>
+                </div>
                 {step < STEPS.length - 1 && (
                   <button onClick={() => setStep(s => s + 1)} className="px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-sm flex items-center gap-1">
                     Next <ChevronRight size={14} />
@@ -618,7 +678,7 @@ export default function TestBuilder() {
                       </span>
                     </div>
                     {/* Meta pills */}
-                    <div className="flex flex-wrap gap-2 mb-4">
+                    <div className="flex flex-wrap gap-2 mb-3">
                       <span className="inline-flex items-center gap-1 text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 px-2.5 py-1 rounded-full">
                         <Clock size={11} /> {t.duration_minutes} min
                       </span>
@@ -634,9 +694,62 @@ export default function TestBuilder() {
                         {t.mode === 'practice' ? 'Practice' : 'Proctored'}
                       </span>
                     </div>
+
+                    {/* Question + Attempts counters */}
+                    <div className="grid grid-cols-2 gap-2 mb-3">
+                      <div className="rounded-lg border border-violet-200/60 dark:border-violet-500/20 bg-violet-50/50 dark:bg-violet-500/[0.06] p-2.5">
+                        <div className="flex items-center gap-1.5 text-violet-700 dark:text-violet-300 text-[10px] font-bold uppercase tracking-wider">
+                          <HelpCircle size={10} /> Questions
+                        </div>
+                        <p className="mt-1 text-lg font-semibold text-slate-900 dark:text-white">{t.question_count ?? 0}</p>
+                      </div>
+                      <div className="rounded-lg border border-emerald-200/60 dark:border-emerald-500/20 bg-emerald-50/50 dark:bg-emerald-500/[0.06] p-2.5">
+                        <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold uppercase tracking-wider">
+                          <UserCheck size={10} /> Students taken
+                        </div>
+                        <p className="mt-1 text-lg font-semibold text-slate-900 dark:text-white">
+                          {t.attempts_count ?? 0}
+                          {t.avg_score != null && t.submissions_count > 0 && (
+                            <span className="ml-1.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+                              · avg {Math.round(t.avg_score)}%
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Assignment + attempts policy */}
+                    {(() => {
+                      let assigned = t.assigned_to;
+                      if (typeof assigned === 'string') {
+                        try { assigned = JSON.parse(assigned); } catch { assigned = null; }
+                      }
+                      const batchCount   = assigned?.batch_ids?.length   || 0;
+                      const studentCount = assigned?.student_ids?.length || 0;
+                      const assignLabel = batchCount > 0
+                        ? `Assigned to ${batchCount} batch${batchCount === 1 ? '' : 'es'}`
+                        : studentCount > 0
+                          ? `Assigned to ${studentCount} student${studentCount === 1 ? '' : 's'}`
+                          : 'Available to everyone';
+                      const max = parseInt(t.max_attempts, 10);
+                      const attemptsLabel = Number.isFinite(max) && max > 0
+                        ? `${max} attempt${max === 1 ? '' : 's'} per student`
+                        : 'Unlimited attempts';
+                      return (
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-2">
+                          <p className="text-xs text-gray-500 dark:text-gray-400 inline-flex items-center gap-1">
+                            <Users size={11} /> {assignLabel}
+                          </p>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-500/10 px-1.5 py-0.5 rounded-md">
+                            {attemptsLabel}
+                          </span>
+                        </div>
+                      );
+                    })()}
+
                     {/* Start time if set */}
                     {t.start_time && (
-                      <p className="text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1 mb-4">
+                      <p className="text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1 mb-3">
                         <Calendar size={11} /> Starts {new Date(t.start_time).toLocaleString()}
                       </p>
                     )}
@@ -653,6 +766,11 @@ export default function TestBuilder() {
                         {t.status === 'live' ? 'Live now' : t.status === 'scheduled' ? 'Scheduled' : 'Completed'}
                       </span>
                     )}
+                    <button onClick={() => setEditing(t)}
+                      title="Edit test (including assignment)"
+                      className="p-2 text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 rounded-lg transition-colors">
+                      <Edit3 size={15} />
+                    </button>
                     <button onClick={() => deleteTest(t.test_id)}
                       className="p-2 text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
                       <Trash2 size={15} />
@@ -664,6 +782,17 @@ export default function TestBuilder() {
           </>
         )}
       </div>
+
+      {editing && (
+        <EditTestModal
+          test={editing}
+          onClose={() => setEditing(null)}
+          onSaved={(patch) => {
+            setTests(prev => prev.map(t => t.test_id === editing.test_id ? { ...t, ...patch } : t));
+            setEditing(null);
+          }}
+        />
+      )}
     </div>
   );
 }

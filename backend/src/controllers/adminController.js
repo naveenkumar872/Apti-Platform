@@ -290,8 +290,17 @@ const deleteBatch = async (req, res, next) => {
 const getTests = async (req, res, next) => {
   try {
     const result = await query(
-      `SELECT t.*, u.name as created_by_name,
-              (SELECT COUNT(*) FROM test_questions tq WHERE tq.test_id = t.test_id) as question_count
+      `SELECT t.test_id, t.title, t.description, t.mode, t.duration_minutes,
+              t.total_marks, t.start_time, t.end_time, t.assigned_to, t.created_by,
+              t.status, t.created_at, t.max_attempts,
+              u.name as created_by_name,
+              (SELECT COUNT(*) FROM test_questions tq WHERE tq.test_id = t.test_id) AS question_count,
+              (SELECT COUNT(DISTINCT ta.student_id) FROM test_attempts ta
+                 WHERE ta.test_id = t.test_id) AS attempts_count,
+              (SELECT COUNT(*) FROM test_attempts ta
+                 WHERE ta.test_id = t.test_id AND ta.status = 'submitted') AS submissions_count,
+              (SELECT ROUND(AVG(ta.accuracy_percent),1) FROM test_attempts ta
+                 WHERE ta.test_id = t.test_id AND ta.status = 'submitted') AS avg_score
        FROM tests t LEFT JOIN users u ON u.user_id = t.created_by
        ORDER BY t.created_at DESC`
     );
@@ -307,40 +316,79 @@ const createTest = async (req, res, next) => {
     const {
       title, description, mode, duration_minutes, total_marks, marking_scheme,
       shuffle_questions, shuffle_options, proctoring_config, start_time, end_time,
-      assigned_to, questions
+      assigned_to, questions, max_attempts
     } = req.body;
+
+    // 0 / empty / negative → null (unlimited)
+    const cappedAttempts = Number.isFinite(parseInt(max_attempts, 10)) && parseInt(max_attempts, 10) > 0
+      ? parseInt(max_attempts, 10)
+      : null;
 
     const test_id = uuidv4();
     await query(
       `INSERT INTO tests (test_id,title,description,mode,duration_minutes,total_marks,
        marking_scheme,shuffle_questions,shuffle_options,proctoring_config,
-       start_time,end_time,assigned_to,created_by,status)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'draft')`,
+       start_time,end_time,assigned_to,created_by,status,max_attempts)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'draft',?)`,
       [test_id, title, description, mode || 'practice', duration_minutes, total_marks,
        JSON.stringify(marking_scheme || { correct: 1, wrong: -0.25 }),
        shuffle_questions ? 1 : 0, shuffle_options ? 1 : 0,
        JSON.stringify(proctoring_config || { fullscreen: true, tab_switch_limit: 3, webcam: false }),
        start_time || null, end_time || null, JSON.stringify(assigned_to || { batch_ids: [], student_ids: [] }),
-       req.user.user_id]
+       req.user.user_id, cappedAttempts]
     );
 
-    // Add questions — always insert as new (frontend IDs like ai_xxx / manual_xxx are not DB IDs)
+    // Add questions. Three cases:
+    //   1. q.from_bank=true with a real question_id → just link via test_questions
+    //   2. q.question_id starts with "ai_" or "manual_" → it's a frontend stub, insert new
+    //   3. No question_id → insert new
     const questionCount = questions && questions.length > 0 ? questions.length : 0;
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
     if (questions && questions.length > 0) {
       for (let i = 0; i < questions.length; i++) {
         const q = questions[i];
-        const question_id = uuidv4();
-        const source = (q.question_id && String(q.question_id).startsWith('ai_')) ? 'ai_generated' : 'manual';
+        let question_id;
+
+        if (q.from_bank && q.question_id && UUID_RE.test(q.question_id)) {
+          // Re-use existing bank question — verify it exists and is active.
+          const check = await query(
+            'SELECT question_id FROM questions WHERE question_id=? AND is_active=1',
+            [q.question_id]
+          );
+          if (check.rows.length > 0) {
+            question_id = q.question_id;
+          } else {
+            // Bank question got deleted between picker load and submit — fall through to insert.
+            question_id = uuidv4();
+            await query(
+              `INSERT INTO questions (question_id,question_text,question_type,options,correct_answer,
+               explanation,difficulty,concept_id,source,created_by)
+               VALUES (?,?,?,?,?,?,?,?,?,?)`,
+              [question_id, q.question_text, q.question_type || 'mcq',
+               JSON.stringify(q.options), q.correct_answer, q.explanation || null,
+               q.difficulty || 3, q.concept_id || null, 'manual', req.user.user_id]
+            );
+          }
+        } else {
+          // New question (AI-generated stub or manual entry)
+          question_id = uuidv4();
+          const source = (q.question_id && String(q.question_id).startsWith('ai_')) ? 'ai_generated' : 'manual';
+          await query(
+            `INSERT INTO questions (question_id,question_text,question_type,options,correct_answer,
+             explanation,difficulty,concept_id,source,created_by)
+             VALUES (?,?,?,?,?,?,?,?,?,?)`,
+            [question_id, q.question_text, q.question_type || 'mcq',
+             JSON.stringify(q.options), q.correct_answer, q.explanation || null,
+             q.difficulty || 3, q.concept_id || null, source, req.user.user_id]
+          );
+        }
+
+        // Idempotent insert into test_questions — same question can't be linked twice.
         await query(
-          `INSERT INTO questions (question_id,question_text,question_type,options,correct_answer,
-           explanation,difficulty,concept_id,source,created_by)
-           VALUES (?,?,?,?,?,?,?,?,?,?)`,
-          [question_id, q.question_text, q.question_type || 'mcq',
-           JSON.stringify(q.options), q.correct_answer, q.explanation || null,
-           q.difficulty || 3, q.concept_id || null, source, req.user.user_id]
-        );
-        await query(
-          'INSERT INTO test_questions (test_id,question_id,display_order,marks) VALUES (?,?,?,?)',
+          `INSERT INTO test_questions (test_id,question_id,display_order,marks)
+           VALUES (?,?,?,?)
+           ON DUPLICATE KEY UPDATE display_order=VALUES(display_order), marks=VALUES(marks)`,
           [test_id, question_id, i + 1, q.marks || marking_scheme?.correct || 1]
         );
       }
@@ -369,15 +417,26 @@ const createTest = async (req, res, next) => {
 /** PUT /admin/tests/:id */
 const updateTest = async (req, res, next) => {
   try {
-    const { title, description, mode, duration_minutes, start_time, end_time, assigned_to } = req.body;
+    const { title, description, mode, duration_minutes, start_time, end_time, assigned_to, max_attempts } = req.body;
+
+    // max_attempts: undefined → don't touch | 0/null → unlimited | positive int → cap
+    let attemptsClause = '';
+    let attemptsParam  = [];
+    if (max_attempts !== undefined) {
+      const n = parseInt(max_attempts, 10);
+      attemptsClause = ', max_attempts = ?';
+      attemptsParam  = [Number.isFinite(n) && n > 0 ? n : null];
+    }
+
     await query(
       `UPDATE tests SET title=COALESCE(?,title),description=COALESCE(?,description),
        mode=COALESCE(?,mode),duration_minutes=COALESCE(?,duration_minutes),
        start_time=COALESCE(?,start_time),end_time=COALESCE(?,end_time),
        assigned_to=COALESCE(?,assigned_to)
+       ${attemptsClause}
        WHERE test_id=?`,
       [title, description, mode, duration_minutes, start_time, end_time,
-       assigned_to ? JSON.stringify(assigned_to) : null, req.params.id]
+       assigned_to ? JSON.stringify(assigned_to) : null, ...attemptsParam, req.params.id]
     );
     await logAudit(req.user.user_id, 'UPDATE', 'test', req.params.id);
     res.json({ message: 'Test updated' });
@@ -389,11 +448,32 @@ const updateTest = async (req, res, next) => {
 /** POST /admin/tests/:id/publish */
 const publishTest = async (req, res, next) => {
   try {
-    const status = req.body.schedule_for ? 'scheduled' : 'live';
-    await query("UPDATE tests SET status=? WHERE test_id=?", [status, req.params.id]);
-    await logAudit(req.user.user_id, 'PUBLISH', 'test', req.params.id);
-    res.json({ message: `Test ${status}` });
+    const id = req.params.id;
+
+    // Confirm the test exists
+    const existing = await query('SELECT test_id, status FROM tests WHERE test_id=?', [id]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: 'Test not found' });
+    }
+
+    // Must have at least one question linked
+    const qCount = await query(
+      'SELECT COUNT(*) as cnt FROM test_questions WHERE test_id=?',
+      [id]
+    );
+    if (parseInt(qCount.rows[0].cnt, 10) === 0) {
+      return res.status(400).json({
+        error: 'Add at least one question before publishing this test.',
+      });
+    }
+
+    const body = req.body || {};
+    const status = body.schedule_for ? 'scheduled' : 'live';
+    await query('UPDATE tests SET status=? WHERE test_id=?', [status, id]);
+    await logAudit(req.user.user_id, 'PUBLISH', 'test', id);
+    res.json({ message: `Test ${status}`, status });
   } catch (err) {
+    console.error('[publishTest] error:', err.message);
     next(err);
   }
 };
@@ -476,30 +556,61 @@ const aiGenerateQuestions = async (req, res, next) => {
 /** GET /admin/questions */
 const getQuestions = async (req, res, next) => {
   try {
-    const { subject_id, topic_id, concept_id, difficulty, search, page = 1, limit = 20 } = req.query;
+    const { subject_id, topic_id, concept_id, difficulty, search, page = 1, limit = 50 } = req.query;
     const offset = (page - 1) * limit;
     let where = 'WHERE q.is_active = 1';
     const params = [];
 
-    if (topic_id) { where += ' AND c.topic_id = ?'; params.push(topic_id); }
+    if (subject_id) { where += ' AND t.subject_id = ?'; params.push(subject_id); }
+    if (topic_id)   { where += ' AND c.topic_id   = ?'; params.push(topic_id); }
     if (concept_id) { where += ' AND q.concept_id = ?'; params.push(concept_id); }
-    if (difficulty) { where += ' AND q.difficulty = ?'; params.push(parseInt(difficulty)); }
+
+    // Difficulty filter — accept tier name (easy/medium/hard) or numeric value.
+    if (difficulty) {
+      const d = String(difficulty).toLowerCase();
+      if (d === 'easy')        { where += ' AND q.difficulty <= 2';            }
+      else if (d === 'medium') { where += ' AND q.difficulty = 3';             }
+      else if (d === 'hard')   { where += ' AND q.difficulty >= 4';            }
+      else if (!isNaN(parseInt(d))) {
+        where += ' AND q.difficulty = ?';
+        params.push(parseInt(d));
+      }
+    }
+
     if (search) { where += ' AND q.question_text LIKE ?'; params.push(`%${search}%`); }
 
-    const result = await query(
-      `SELECT q.question_id, q.question_text, q.question_type, q.difficulty, q.source,
-              q.created_at, c.name as concept_name, t.name as topic_name, s.name as subject_name
-       FROM questions q
-       JOIN concepts c ON c.concept_id = q.concept_id
-       JOIN topics t ON t.topic_id = c.topic_id
-       JOIN subjects s ON s.subject_id = t.subject_id
-       ${where}
-       ORDER BY q.created_at DESC
-       LIMIT ? OFFSET ?`,
-      [...params, parseInt(limit), parseInt(offset)]
-    );
+    const [items, count] = await Promise.all([
+      query(
+        `SELECT q.question_id, q.question_text, q.question_type, q.difficulty, q.source,
+                q.options, q.correct_answer, q.explanation,
+                q.created_at, c.name as concept_name, t.name as topic_name, s.name as subject_name,
+                c.concept_id, t.topic_id, s.subject_id
+         FROM questions q
+         JOIN concepts c ON c.concept_id = q.concept_id
+         JOIN topics t ON t.topic_id = c.topic_id
+         JOIN subjects s ON s.subject_id = t.subject_id
+         ${where}
+         ORDER BY q.created_at DESC
+         LIMIT ? OFFSET ?`,
+        [...params, parseInt(limit), parseInt(offset)]
+      ),
+      query(
+        `SELECT COUNT(*) as cnt
+         FROM questions q
+         JOIN concepts c ON c.concept_id = q.concept_id
+         JOIN topics t ON t.topic_id = c.topic_id
+         JOIN subjects s ON s.subject_id = t.subject_id
+         ${where}`,
+        params
+      ),
+    ]);
 
-    res.json({ questions: result.rows, page: parseInt(page), limit: parseInt(limit) });
+    res.json({
+      questions: items.rows,
+      total: parseInt(count.rows[0]?.cnt) || 0,
+      page: parseInt(page),
+      limit: parseInt(limit),
+    });
   } catch (err) {
     next(err);
   }
@@ -580,10 +691,12 @@ const uploadMaterial = async (req, res, next) => {
   try {
     const { title, type, file_url, description, subject_id, topic_id, concept_id, visibility, download_allowed, target_batch_id } = req.body;
     const material_id = uuidv4();
+    // Explicit source='manual' so the student-side "Teacher Notes" tab
+    // (which filters by source='manual') picks this up regardless of type.
     await query(
       `INSERT INTO materials (material_id,title,type,file_url,description,subject_id,topic_id,
-       concept_id,uploaded_by,visibility,download_allowed,target_batch_id)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+       concept_id,uploaded_by,visibility,download_allowed,target_batch_id,source)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'manual')`,
       [material_id, title, type, file_url, description, subject_id, topic_id, concept_id,
        req.user.user_id, visibility || 'public', download_allowed !== false ? 1 : 0, target_batch_id]
     );
@@ -1058,17 +1171,33 @@ const getUserStats = async (req, res, next) => {
 
 const getQuestionBankStats = async (req, res, next) => {
   try {
-    const [qCount, sCount, tCount, cCount] = await Promise.all([
+    const [qCount, byDifficulty, bySource, sCount, tCount] = await Promise.all([
       query("SELECT COUNT(*) as count FROM questions WHERE is_active=1"),
+      query(`SELECT
+               SUM(CASE WHEN difficulty <= 2 THEN 1 ELSE 0 END) AS easy,
+               SUM(CASE WHEN difficulty = 3 THEN 1 ELSE 0 END)   AS medium,
+               SUM(CASE WHEN difficulty >= 4 THEN 1 ELSE 0 END) AS hard
+             FROM questions WHERE is_active=1`),
+      query(`SELECT
+               SUM(CASE WHEN source='manual'        THEN 1 ELSE 0 END) AS manual,
+               SUM(CASE WHEN source='ai_generated'  THEN 1 ELSE 0 END) AS ai,
+               SUM(CASE WHEN source='bulk_import'   THEN 1 ELSE 0 END) AS imported
+             FROM questions WHERE is_active=1`),
       query("SELECT COUNT(*) as count FROM subjects"),
       query("SELECT COUNT(*) as count FROM topics"),
-      query("SELECT COUNT(*) as count FROM concepts"),
     ]);
+    const diff = byDifficulty.rows[0] || {};
+    const src  = bySource.rows[0] || {};
     res.json({
       total_questions: parseInt(qCount.rows[0].count) || 0,
-      total_subjects: parseInt(sCount.rows[0].count) || 0,
-      total_topics: parseInt(tCount.rows[0].count) || 0,
-      total_concepts: parseInt(cCount.rows[0].count) || 0
+      total_subjects:  parseInt(sCount.rows[0].count) || 0,
+      total_topics:    parseInt(tCount.rows[0].count) || 0,
+      easy:     parseInt(diff.easy)   || 0,
+      medium:   parseInt(diff.medium) || 0,
+      hard:     parseInt(diff.hard)   || 0,
+      manual:   parseInt(src.manual)   || 0,
+      ai:       parseInt(src.ai)       || 0,
+      imported: parseInt(src.imported) || 0,
     });
   } catch (err) {
     next(err);

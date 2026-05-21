@@ -2,10 +2,40 @@ const express = require('express');
 const router = express.Router();
 const { authenticate, authorize } = require('../middleware/auth');
 const studentController = require('../controllers/studentController');
+const diagnosticController = require('../controllers/diagnosticController');
+const masteryController = require('../controllers/masteryController');
+const mistakesController = require('../controllers/mistakesController');
+const simulatorController = require('../controllers/simulatorController');
 
 // All student routes require authentication and student role
 router.use(authenticate);
 router.use(authorize('student'));
+
+// Diagnostic (first-time gated test)
+router.get ('/diagnostic/status', diagnosticController.status);
+router.post('/diagnostic/start',  diagnosticController.start);
+router.post('/diagnostic/answer', diagnosticController.answer);
+router.post('/diagnostic/submit', diagnosticController.submit);
+router.get ('/diagnostic/report', diagnosticController.report);
+
+// Mastery + Daily focus (personalised learning loop)
+router.get('/mastery',      masteryController.getMastery);
+router.get('/focus-today',  masteryController.getFocusToday);
+
+// Mistake Replay Queue — wrong answers auto-collected for re-attempt
+router.get   ('/mistakes',                   mistakesController.getMistakes);
+router.get   ('/mistakes/replay',            mistakesController.getReplay);
+router.post  ('/mistakes/answer',            mistakesController.submitAnswer);
+router.delete('/mistakes/:entry_id',         mistakesController.dismissMistake);
+
+// Company Exam Simulator — multi-section proctored mocks (TCS NQT / Infosys SP / …)
+router.get ('/simulator/companies',        simulatorController.listCompanies);
+router.post('/simulator/start',            simulatorController.start);
+router.get ('/simulator/attempt/:id',      simulatorController.getAttempt);
+router.post('/simulator/answer',           simulatorController.answer);
+router.post('/simulator/submit-section',   simulatorController.submitSection);
+router.post('/simulator/submit',           simulatorController.submit);
+router.get ('/simulator/result/:id',       simulatorController.result);
 
 // Dashboard
 router.get('/dashboard', studentController.getDashboard);

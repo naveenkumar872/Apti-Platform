@@ -855,9 +855,9 @@ export default function StudyMaterials() {
                     }
                   })();
                   const handleOpen = () => {
-                    if (note.type === 'pdf' && note.file_url) {
+                    if (note.type === 'pdf' && note.file_url && note.file_url !== '#') {
                       setPdfModal({ url: note.file_url, title: note.title });
-                    } else if (note.file_url) {
+                    } else if (note.file_url && note.file_url !== '#') {
                       window.open(note.file_url, '_blank', 'noopener,noreferrer');
                     }
                   };

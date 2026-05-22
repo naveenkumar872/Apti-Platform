@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
-import { BarChart3, ChevronDown, ChevronUp, Sparkles, X, Search, Trash2, BookOpen, Zap, ClipboardList, AlertTriangle } from "lucide-react";
+import { BarChart3, ChevronDown, ChevronUp, Sparkles, X, Search, Trash2, BookOpen, Zap, ClipboardList, AlertTriangle, CalendarDays } from "lucide-react";
 import toast from "react-hot-toast";
 
 const C = "bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800";
@@ -56,32 +56,78 @@ function DetailPane({ reportId, onClose }) {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [expanded, setExpanded] = useState(null);
+  const [existingPlan, setExistingPlan] = useState(null);
+  const [confirmNewPlan, setConfirmNewPlan] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
-    api.get(`/student/reports/${reportId}`).then(r => setDetail(r.data)).catch(() => {}).finally(() => setLoading(false));
+    setLoading(true);
+    Promise.all([
+      api.get(`/student/reports/${reportId}`).then(r => setDetail(r.data)).catch(() => {}),
+      api.get('/student/plan').then(r => setExistingPlan(r.data?.plan || null)).catch(() => {}),
+    ]).finally(() => setLoading(false));
   }, [reportId]);
 
-  const generatePlan = async () => {
+  const doGeneratePlan = async () => {
+    setConfirmNewPlan(false);
     setGenerating(true);
     try {
       const weakest = detail?.weak_topics?.[0];
-      const body = weakest?.topic_id ? { topic_id: weakest.topic_id } : {};
+      const body = {
+        attempt_id: detail?.attempt?.id || detail?.attempt?.attempt_id,
+        test_title: detail?.attempt?.title || 'Test',
+        ...(weakest?.topic_id ? { topic_id: weakest.topic_id } : {}),
+      };
       await api.post("/student/plan/generate", body);
-      toast.success("Study plan updated successfully!");
+      toast.success("Study plan generated!");
+      navigate("/student/plan");
     } catch {
       toast.error("Failed to generate plan");
     }
     setGenerating(false);
   };
 
+  const generatePlan = () => {
+    if (existingPlan) {
+      setConfirmNewPlan(true);
+    } else {
+      doGeneratePlan();
+    }
+  };
+
   if (loading) return <div className="p-6 text-center text-sm text-gray-400">Loading report...</div>;
   if (!detail) return <div className="p-6 text-center text-sm text-red-400">Could not load report</div>;
+
+  const confirmModal = confirmNewPlan && (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
+        <div className="mx-auto w-12 h-12 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-500 flex items-center justify-center mb-4">
+          <CalendarDays size={22} />
+        </div>
+        <h3 className="text-base font-bold text-gray-800 dark:text-gray-100 mb-1">Study Plan Already Exists</h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-5 leading-relaxed">
+          You already have an active study plan. Generating a new one will <strong>replace</strong> your current plan. Do you want to continue?
+        </p>
+        <div className="flex gap-3">
+          <button onClick={() => setConfirmNewPlan(false)}
+            className="flex-1 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 font-semibold py-2.5 rounded-xl text-xs transition-colors">
+            Cancel
+          </button>
+          <button onClick={doGeneratePlan}
+            className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:opacity-90 text-white font-semibold py-2.5 rounded-xl text-xs transition-opacity">
+            Generate New Plan
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 
   const { attempt, answers } = detail;
   const g = grade(attempt?.accuracy_percent || 0);
 
   return (
+    <>
+    {confirmModal}
     <div className={"rounded-2xl border p-6 mb-6 " + C}>
       <div className="flex items-start justify-between mb-4">
         <div>
@@ -132,6 +178,13 @@ function DetailPane({ reportId, onClose }) {
           <Sparkles size={14} />
           {generating ? "Generating..." : "Generate Study Plan"}
         </button>
+        {existingPlan && (
+          <button onClick={() => navigate("/student/plan")}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 text-sm font-semibold transition-all border border-emerald-100 dark:border-emerald-900/30">
+            <CalendarDays size={14} />
+            View Existing Plan
+          </button>
+        )}
         <button
           onClick={() => {
             if (detail?.type === "test" || attempt?.test_id) {
@@ -222,6 +275,7 @@ function DetailPane({ reportId, onClose }) {
         </div>
       )}
     </div>
+    </>
   );
 }
 

@@ -112,6 +112,7 @@ function getYouTubeId(url) {
 
 export default function StudyPlan() {
   const [plan, setPlan] = useState(null);
+  const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
 
@@ -139,8 +140,16 @@ export default function StudyPlan() {
     setLoading(true);
     api.get("/student/plan")
       .then(r => {
-        setPlan(r.data.plan || null);
-        // Auto-switch to detail if plan exists and we're on cards
+        const allPlans = r.data.plans || (r.data.plan ? [r.data.plan] : []);
+        setPlans(allPlans);
+        // Keep current plan selection if it still exists, otherwise default to most recent
+        setPlan(prev => {
+          if (prev) {
+            const updated = allPlans.find(p => p.plan_id === prev.plan_id);
+            if (updated) return updated;
+          }
+          return allPlans[0] || null;
+        });
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -372,7 +381,7 @@ export default function StudyPlan() {
             </div>
             <h1 className="text-2xl md:text-[28px] font-semibold text-white tracking-tight truncate">
               {mainView === "cards"                   && "My Study Plans"}
-              {mainView === "detail" && subView === "list"         && `Your Learning Path`}
+              {mainView === "detail" && subView === "list"         && (plan?.name || `Your Learning Path`)}
               {mainView === "detail" && subView === "resources"    && `Resources: ${activeTask?.topic_name}`}
               {mainView === "detail" && subView === "quiz"         && `Quiz: ${activeTask?.topic_name}`}
               {mainView === "detail" && subView === "quiz-result"  && `Quiz Summary`}
@@ -467,7 +476,52 @@ export default function StudyPlan() {
               <span className="text-xs text-gray-400 ml-1">— click &quot;View Plan&quot; to open</span>
             </div>
 
-            {/* The one active plan card */}
+          {/* The active plan card(s) */}
+            {plans.length > 1 ? (
+              /* ── Multiple plans: show list ── */
+              <div className="space-y-4">
+                {plans.map((p, idx) => {
+                  const ptasks = p.tasks || [];
+                  const pdone = ptasks.filter(t => t.is_completed).length;
+                  const ppct = ptasks.length ? Math.round((pdone / ptasks.length) * 100) : 0;
+                  const pWeeks = [...new Set(ptasks.map(t => t.week_number))].length;
+                  const gradients = [
+                    "from-emerald-500 to-teal-500",
+                    "from-indigo-500 to-purple-500",
+                    "from-orange-500 to-amber-500",
+                    "from-rose-500 to-pink-500",
+                  ];
+                  const grad = gradients[idx % gradients.length];
+                  return (
+                    <div key={p.plan_id} className={"rounded-2xl border shadow-sm overflow-hidden " + C}>
+                      <div className={"h-2 bg-gradient-to-r " + grad} />
+                      <div className="p-5">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                              <span className="text-xs font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 px-2.5 py-0.5 rounded-full uppercase tracking-wider">Active</span>
+                              <span className="text-xs text-gray-400">{pWeeks} week{pWeeks !== 1 ? "s" : ""}</span>
+                              {p.generated_at && <span className="text-xs text-gray-400">{new Date(p.generated_at).toLocaleDateString()}</span>}
+                            </div>
+                            <h2 className="text-base font-black text-gray-800 dark:text-gray-100 mt-1 truncate">{p.name || `Study Plan #${idx + 1}`}</h2>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{ptasks.length} tasks · {ppct}% completed</p>
+                          </div>
+                          <button
+                            onClick={() => { setPlan(p); setSubView("list"); setMainView("detail"); }}
+                            className={"flex-shrink-0 flex items-center gap-2 bg-gradient-to-r " + grad + " hover:opacity-90 text-white text-sm font-bold px-4 py-2 rounded-xl transition-all shadow-sm"}>
+                            View <ChevronRight size={13} />
+                          </button>
+                        </div>
+                        <div className="mt-3 w-full bg-gray-100 dark:bg-gray-800 rounded-full h-1.5">
+                          <div className={"h-1.5 rounded-full bg-gradient-to-r transition-all " + grad} style={{ width: `${ppct}%` }} />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+            /* ── Single plan card ── */
             <div className={"rounded-2xl border shadow-sm overflow-hidden " + C}>
               {/* Card top gradient bar */}
               <div className="h-2 bg-gradient-to-r from-emerald-500 to-teal-500" />
@@ -480,7 +534,7 @@ export default function StudyPlan() {
                       </span>
                       <span className="text-xs text-gray-400">{totalWeeks} weeks</span>
                     </div>
-                    <h2 className="text-lg font-black text-gray-800 dark:text-gray-100 mt-1">Personalized Study Plan</h2>
+                    <h2 className="text-lg font-black text-gray-800 dark:text-gray-100 mt-1">{plan?.name || 'Personalized Study Plan'}</h2>
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                       {tasks.length} tasks across {totalWeeks} week{totalWeeks !== 1 ? "s" : ""} · AI-generated based on your weak areas
                     </p>
@@ -538,6 +592,7 @@ export default function StudyPlan() {
                 )}
               </div>
             </div>
+            )}
           </div>
 
         ) : (

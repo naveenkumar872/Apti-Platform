@@ -929,6 +929,7 @@ export default function StudyPlanManagement() {
 
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [plan, setPlan] = useState(null);
+  const [plans, setPlans] = useState([]);
   const [loadingPlan, setLoadingPlan] = useState(false);
   const [generating, setGenerating] = useState(false);
 
@@ -1080,12 +1081,15 @@ export default function StudyPlanManagement() {
   const loadPlan = async (student) => {
     setSelectedStudent(student);
     setPlan(null);
+    setPlans([]);
     setView(null);
     setLockedWeeks({});
     setLoadingPlan(true);
     try {
       const r = await api.get(`/admin/plans/${student.user_id}`);
-      setPlan(r.data.plan || null);
+      const allPlans = r.data.plans || (r.data.plan ? [r.data.plan] : []);
+      setPlans(allPlans);
+      setPlan(allPlans[0] || null);
     } catch { toast.error('Failed to load plan'); }
     finally { setLoadingPlan(false); }
   };
@@ -1124,7 +1128,10 @@ export default function StudyPlanManagement() {
     setLoadingPlan(true);
     try {
       const r = await api.get(`/admin/plans/${selectedStudent.user_id}`);
-      setPlan(r.data.plan || null);
+      const allPlans = r.data.plans || (r.data.plan ? [r.data.plan] : []);
+      setPlans(allPlans);
+      const refreshed = allPlans.find(p => p.plan_id === plan?.plan_id) || allPlans[0] || null;
+      setPlan(refreshed);
     } catch { /* ignore */ }
     finally { setLoadingPlan(false); }
   };
@@ -1672,7 +1679,38 @@ export default function StudyPlanManagement() {
                 </button>
               </div>
 
+              {/* Active plan name badge */}
+              {plan?.name && (
+                <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-50 dark:bg-violet-900/20 border border-violet-100 dark:border-violet-800/40">
+                  <CalendarDays size={14} className="text-violet-500 flex-shrink-0" />
+                  <span className="text-sm font-semibold text-violet-800 dark:text-violet-300 truncate">{plan.name}</span>
+                  <span className="ml-auto text-xs text-gray-400 flex-shrink-0">{new Date(plan.generated_at).toLocaleDateString()}</span>
+                </div>
+              )}
+
               {renderPlanContent()}
+
+              {/* Plan selector when student has multiple plans */}
+              {plans.length > 1 && (
+                <div className={`${C} p-4`}>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                    <CalendarDays size={12} />All Study Plans ({plans.length})
+                  </p>
+                  <div className="space-y-2">
+                    {plans.map((p, idx) => (
+                      <button key={p.plan_id} onClick={() => { setPlan(p); setView(null); }}
+                        className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl text-left transition-colors text-sm ${
+                          plan?.plan_id === p.plan_id
+                            ? 'bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800'
+                            : 'hover:bg-gray-50 dark:hover:bg-gray-800 border border-transparent'
+                        }`}>
+                        <span className="font-semibold text-gray-800 dark:text-gray-100 truncate">{p.name || `Plan #${idx + 1}`}</span>
+                        <span className="text-xs text-gray-400 flex-shrink-0">{new Date(p.generated_at).toLocaleDateString()}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

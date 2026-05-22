@@ -42,7 +42,7 @@ export default function Materials() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [subjects, setSubjects] = useState([]);
-  const [topics, setTopics] = useState([]);
+  const [allTopics, setAllTopics] = useState([]);
   const [form, setForm] = useState(EMPTY_FORM);
   const [file, setFile] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -91,16 +91,13 @@ export default function Materials() {
   useEffect(() => {
     api.get('/admin/materials').then(r => setMaterials(r.data.materials || [])).catch(() => {}).finally(() => setLoading(false));
     api.get('/admin/subjects').then(r => setSubjects(r.data.subjects || [])).catch(() => {});
+    api.get('/admin/topics').then(r => setAllTopics(r.data.topics || [])).catch(() => {});
     api.get('/admin/dashboard').then(r => setStats(r.data)).catch(() => {});
   }, []);
 
-  // Load topics when subject changes
-  useEffect(() => {
-    if (!form.subject_id) { setTopics([]); return; }
-    api.get('/admin/topics', { params: { subject_id: form.subject_id } })
-      .then(r => setTopics(r.data.topics || []))
-      .catch(() => setTopics([]));
-  }, [form.subject_id]);
+  const topics = form.subject_id
+    ? allTopics.filter(t => t.subject_id === form.subject_id)
+    : [];
 
   const updateForm = (field, value) => setForm(f => ({ ...f, [field]: value }));
 
@@ -133,7 +130,6 @@ export default function Materials() {
       setShowForm(false);
       setForm(EMPTY_FORM);
       setFile(null);
-      setTopics([]);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to save material');
     } finally { setSaving(false); }
@@ -537,7 +533,7 @@ export default function Materials() {
                       {m.topic_name && <span className="font-semibold text-indigo-600 dark:text-indigo-400">{m.topic_name}</span>}
                     </div>
                   )}
-                  {m.file_url && !selectMode && (
+                  {m.file_url && m.file_url !== '#' && !selectMode && (
                     <a href={m.file_url} target="_blank" rel="noreferrer"
                       onClick={(e) => e.stopPropagation()}
                       className="mt-1 inline-flex items-center gap-1.5 text-xs text-violet-600 dark:text-violet-400 font-semibold hover:underline">

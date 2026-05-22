@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import toast from "react-hot-toast";
@@ -7,27 +7,69 @@ import { ClipboardList, Clock, Maximize2, AlertTriangle, ChevronLeft, ChevronRig
 const C = "bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800";
 
 function useProctor(attemptId, enabled) {
-  const violRef = useRef(0);
+  const [violations, setViolations] = useState(0);
+  const [fsExited, setFsExited] = useState(false);
+  const [tabWarning, setTabWarning] = useState(false);
+
   const report = useCallback(async (type) => {
+    setViolations(v => v + 1);
     try { await api.post(`/student/tests/attempts/${attemptId}/violation`, { type }); } catch {}
   }, [attemptId]);
 
+  // Request fullscreen when a proctored test mounts; exit it on unmount
+  useEffect(() => {
+    if (!enabled) return;
+    const el = document.documentElement;
+    if (el.requestFullscreen) {
+      el.requestFullscreen().catch(() => {});
+    } else if (el.webkitRequestFullscreen) {
+      el.webkitRequestFullscreen();
+    }
+    return () => {
+      if (document.fullscreenElement || document.webkitFullscreenElement) {
+        (document.exitFullscreen || document.webkitExitFullscreen || (() => {})).call(document).catch(() => {});
+      }
+    };
+  }, [enabled]);
+
+  // Monitor tab-switch, copy, right-click, and fullscreen-exit
   useEffect(() => {
     if (!enabled || !attemptId) return;
-    const onVis = () => { if (document.hidden) { violRef.current++; report("tab_switch"); } };
-    const onCtx = e => { e.preventDefault(); report("right_click"); };
-    const onCopy = () => report("copy");
-    document.addEventListener("visibilitychange", onVis);
-    document.addEventListener("contextmenu", onCtx);
-    document.addEventListener("copy", onCopy);
+    const onVis = () => { if (document.hidden) { report('tab_switch'); setTabWarning(true); } };
+    const onCtx = e => { e.preventDefault(); report('right_click'); };
+    const onCopy = () => report('copy');
+    const onFs = () => {
+      const isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement);
+      if (!isFullscreen) {
+        setFsExited(true);
+        report('fullscreen_exit');
+      } else {
+        setFsExited(false);
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    document.addEventListener('contextmenu', onCtx);
+    document.addEventListener('copy', onCopy);
+    document.addEventListener('fullscreenchange', onFs);
+    document.addEventListener('webkitfullscreenchange', onFs);
     return () => {
-      document.removeEventListener("visibilitychange", onVis);
-      document.removeEventListener("contextmenu", onCtx);
-      document.removeEventListener("copy", onCopy);
+      document.removeEventListener('visibilitychange', onVis);
+      document.removeEventListener('contextmenu', onCtx);
+      document.removeEventListener('copy', onCopy);
+      document.removeEventListener('fullscreenchange', onFs);
+      document.removeEventListener('webkitfullscreenchange', onFs);
     };
   }, [enabled, attemptId, report]);
 
-  return violRef;
+  const reEnterFullscreen = useCallback(() => {
+    const el = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (req) req.call(el).then(() => setFsExited(false)).catch(() => {});
+  }, []);
+
+  const dismissTabWarning = useCallback(() => setTabWarning(false), []);
+
+  return { violations, fsExited, reEnterFullscreen, tabWarning, dismissTabWarning };
 }
 
 function Timer({ endTime, onExpire }) {
@@ -54,11 +96,12 @@ function Timer({ endTime, onExpire }) {
 }
 
 function TestInterface({ test, attempt, onSubmit }) {
+  const isProctored = test?.mode === 'test';
   const questions = attempt?.questions || attempt?.test?.questions || [];
   const [answers, setAnswers] = useState({});
   const [idx, setIdx] = useState(0);
   const [submitting, setSubmitting] = useState(false);
-  const violRef = useProctor(attempt?.attempt_id, true);
+  const { violations, fsExited, reEnterFullscreen, tabWarning, dismissTabWarning } = useProctor(attempt?.attempt_id, isProctored);
 
   const answer = async (qid, opt) => {
     setAnswers(a => ({ ...a, [qid]: opt }));
@@ -72,6 +115,52 @@ function TestInterface({ test, attempt, onSubmit }) {
     setSubmitting(false);
   };
 
+  // Tab-switch warning popup (dismissable, proctored tests only)
+  const tabWarningPopup = isProctored && tabWarning && (
+    <div className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center">
+      <div className="bg-white dark:bg-gray-900 rounded-2xl p-8 max-w-sm w-full mx-4 text-center shadow-2xl border border-gray-200 dark:border-gray-700">
+        <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-950/40 flex items-center justify-center mx-auto mb-4">
+          <AlertTriangle size={32} className="text-red-500" />
+        </div>
+        <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-2">Tab Switch Detected!</h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
+          Switching tabs or windows is not allowed during this test.
+        </p>
+        <p className="text-xs text-red-500 font-semibold mb-6">
+          Total violations: {violations}
+        </p>
+        <button onClick={dismissTabWarning}
+          className="w-full px-4 py-3 bg-gradient-to-r from-red-500 to-orange-500 text-white rounded-xl font-bold text-sm hover:opacity-90 transition-opacity">
+          I Understand — Continue Test
+        </button>
+      </div>
+    </div>
+  );
+
+  // Fullscreen-exit blocking overlay (proctored tests only)
+  if (isProctored && fsExited) {
+    return (
+      <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center">
+        <div className="bg-white dark:bg-gray-900 rounded-2xl p-8 max-w-sm w-full mx-4 text-center shadow-2xl border border-gray-200 dark:border-gray-700">
+          <div className="w-16 h-16 rounded-full bg-orange-100 dark:bg-orange-950/40 flex items-center justify-center mx-auto mb-4">
+            <AlertTriangle size={32} className="text-orange-500" />
+          </div>
+          <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-2">Fullscreen Exited!</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
+            This violation has been recorded.
+          </p>
+          <p className="text-xs text-orange-500 font-semibold mb-6">
+            Total violations: {violations}
+          </p>
+          <button onClick={reEnterFullscreen}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-bold text-sm hover:opacity-90 transition-opacity">
+            <Maximize2 size={15} /> Return to Fullscreen
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const q = questions[idx];
   // Support both {id, text} options array and flat option_a/b/c/d
   const opts = q ? (
@@ -82,6 +171,8 @@ function TestInterface({ test, attempt, onSubmit }) {
   const answered = Object.keys(answers).length;
 
   return (
+    <>
+    {tabWarningPopup}
     <div className="flex gap-4 h-[calc(100vh-180px)]">
       {/* Question panel */}
       <div className="flex-1 flex flex-col">
@@ -89,10 +180,10 @@ function TestInterface({ test, attempt, onSubmit }) {
         <div className={"flex items-center justify-between px-5 py-3 rounded-2xl border mb-4 " + C}>
           <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{test?.title}</span>
           <div className="flex items-center gap-3">
-            {violRef.current > 0 && (
+            {violations > 0 && (
               <span className="flex items-center gap-1 text-xs text-orange-500 font-semibold">
                 <AlertTriangle size={13} />
-                {violRef.current} violation{violRef.current > 1 ? "s" : ""}
+                {violations} violation{violations > 1 ? "s" : ""}
               </span>
             )}
             {attempt?.end_time && <Timer endTime={attempt.end_time} onExpire={submit} />}
@@ -158,6 +249,7 @@ function TestInterface({ test, attempt, onSubmit }) {
         </div>
       </div>
     </div>
+    </>
   );
 }
 
@@ -250,7 +342,7 @@ export default function Tests() {
   }, [location, navigate]);
 
   if (result) return (
-    <div className="w-full min-h-full flex flex-col">
+    <div className="fixed inset-0 z-50 bg-slate-50 dark:bg-[#09090d] flex flex-col overflow-auto">
       <div className="relative bg-gradient-to-br from-violet-600 via-indigo-600 to-blue-600 px-6 pt-8 pb-7 md:px-10 overflow-hidden">
         <div className="absolute inset-0 opacity-[0.06] pointer-events-none"
           style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
@@ -277,7 +369,7 @@ export default function Tests() {
   );
 
   if (active && attempt) return (
-    <div className="w-full h-full p-5 md:p-6">
+    <div className="fixed inset-0 z-50 bg-slate-50 dark:bg-[#09090d] overflow-auto p-5 md:p-6">
       <TestInterface test={active} attempt={attempt} onSubmit={data => { setResult(data); }} />
     </div>
   );

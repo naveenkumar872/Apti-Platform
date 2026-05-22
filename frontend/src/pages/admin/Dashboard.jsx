@@ -412,7 +412,7 @@ export default function AdminDashboard() {
                     <span className="w-1 h-7 rounded-full bg-rose-500" />
                     <div>
                       <p className="text-[13.5px] font-semibold text-slate-800 dark:text-slate-100">{v.student_name}</p>
-                      <p className="text-[11.5px] text-rose-600 dark:text-rose-400 capitalize">{v.violation_type.replace('_', ' ')}</p>
+                      <p className="text-[11.5px] text-rose-600 dark:text-rose-400 capitalize">{(v.violation_type || 'unknown').replace('_', ' ')}</p>
                     </div>
                   </div>
                   <span className="text-[11px] text-slate-400">{new Date(v.occurred_at).toLocaleString()}</span>

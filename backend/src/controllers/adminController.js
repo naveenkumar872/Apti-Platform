@@ -849,11 +849,12 @@ const getStudentReport = async (req, res, next) => {
 const getStudentPlan = async (req, res, next) => {
   try {
     const planResult = await query(
-      `SELECT * FROM study_plans WHERE student_id = ? AND status = 'active' LIMIT 1`,
+      `SELECT * FROM study_plans WHERE student_id = ? AND status = 'active' ORDER BY generated_at DESC`,
       [req.params.student_id]
     );
-    const plan = planResult.rows[0] || null;
-    if (plan) {
+
+    const plans = planResult.rows;
+    for (const plan of plans) {
       const tasks = await query(
         `SELECT pt.*, t.name as topic_name, t.subject_id, s.name as subject_name
          FROM plan_tasks pt
@@ -865,7 +866,8 @@ const getStudentPlan = async (req, res, next) => {
       );
       plan.tasks = tasks.rows;
     }
-    res.json({ plan });
+
+    res.json({ plan: plans[0] || null, plans });
   } catch (err) {
     next(err);
   }

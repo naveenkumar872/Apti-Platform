@@ -1132,83 +1132,129 @@ const generatePlan = async (req, res, next) => {
   try {
     const { v4: uuidv4 } = require('uuid');
     const student_id = req.user.user_id;
-    const { topic_id } = req.body;
+    const { topic_id, attempt_id, test_title } = req.body;
 
     let targetTopics = [];
-    if (topic_id) {
-      const topicResult = await query(
-        `SELECT topic_id, name as topic_name FROM topics WHERE topic_id = ?`,
-        [topic_id]
+    let isPerfectScore = false;
+    let planName = '';
+    const dateStr = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+
+    if (attempt_id) {
+      // Pull wrong-answer topics from this specific test attempt
+      let wrongRows = await query(
+        `SELECT DISTINCT top.topic_id, top.name as topic_name, COUNT(*) as wrong_count
+         FROM attempt_answers aa
+         JOIN questions q ON q.question_id = aa.question_id
+         JOIN concepts c ON c.concept_id = q.concept_id
+         JOIN topics top ON top.topic_id = c.topic_id
+         WHERE aa.attempt_id = ? AND aa.is_correct = 0
+         GROUP BY top.topic_id, top.name
+         ORDER BY wrong_count DESC`,
+        [attempt_id]
       );
-      if (topicResult.rows.length > 0) {
+      targetTopics = wrongRows.rows;
+
+      // Fallback: try practice session
+      if (targetTopics.length === 0) {
+        wrongRows = await query(
+          `SELECT DISTINCT top.topic_id, top.name as topic_name, COUNT(*) as wrong_count
+           FROM practice_answers pa
+           JOIN questions q ON q.question_id = pa.question_id
+           JOIN concepts c ON c.concept_id = q.concept_id
+           JOIN topics top ON top.topic_id = c.topic_id
+           WHERE pa.session_id = ? AND pa.is_correct = 0
+           GROUP BY top.topic_id, top.name
+           ORDER BY wrong_count DESC`,
+          [attempt_id]
+        );
+        targetTopics = wrongRows.rows;
+      }
+
+      if (targetTopics.length === 0) {
+        // 100% score — no wrong answers
+        isPerfectScore = true;
+      }
+
+      const title = test_title || 'Test';
+      planName = isPerfectScore
+        ? `${title} — Advanced Concepts (${dateStr})`
+        : `${title} — Improvement Plan (${dateStr})`;
+
+      // Archive ONLY the previous plan for this same attempt (re-generate case)
+      await query(
+        "UPDATE study_plans SET status='archived' WHERE student_id=? AND attempt_id=? AND status='active'",
+        [student_id, attempt_id]
+      );
+    } else {
+      // Legacy: single topic_id or global weak areas
+      if (topic_id) {
+        const topicResult = await query(
+          `SELECT topic_id, name as topic_name FROM topics WHERE topic_id = ?`,
+          [topic_id]
+        );
         targetTopics = topicResult.rows;
       }
-    }
 
-    if (targetTopics.length === 0) {
-      // Get top weak areas
-      const weakTopics = await query(
-        `SELECT ssp.topic_id, t.name as topic_name, ssp.accuracy_percent, ssp.total_attempts
-         FROM student_skill_profile ssp
-         JOIN topics t ON t.topic_id = ssp.topic_id
-         WHERE ssp.student_id = ? AND ssp.is_weak = 1
-         ORDER BY ssp.accuracy_percent ASC
-         LIMIT 5`,
+      if (targetTopics.length === 0) {
+        const weakTopics = await query(
+          `SELECT ssp.topic_id, t.name as topic_name, ssp.accuracy_percent
+           FROM student_skill_profile ssp
+           JOIN topics t ON t.topic_id = ssp.topic_id
+           WHERE ssp.student_id = ? AND ssp.is_weak = 1
+           ORDER BY ssp.accuracy_percent ASC LIMIT 5`,
+          [student_id]
+        );
+        targetTopics = weakTopics.rows;
+      }
+
+      planName = targetTopics.length > 0
+        ? `${targetTopics[0].topic_name} Focus Plan (${dateStr})`
+        : `Personalized Study Plan (${dateStr})`;
+
+      // Legacy: archive all active plans when no attempt_id
+      await query(
+        "UPDATE study_plans SET status='archived' WHERE student_id=? AND status='active'",
         [student_id]
       );
-      targetTopics = weakTopics.rows;
     }
 
-    if (targetTopics.length === 0) {
-      // Fallback: get any 3 topics so we can always generate a plan
-      const fallbackTopics = await query(
+    // For 100% score: pick advanced topics (student's already-mastered or random)
+    if (isPerfectScore || targetTopics.length === 0) {
+      const advTopics = await query(
         `SELECT topic_id, name as topic_name FROM topics ORDER BY RAND() LIMIT 3`,
         []
       );
-      targetTopics = fallbackTopics.rows;
+      targetTopics = advTopics.rows;
     }
 
-    // Deactivate existing active plans
-    await query(
-      "UPDATE study_plans SET status='archived' WHERE student_id=? AND status='active'",
-      [student_id]
-    );
-
     const plan_id = uuidv4();
-    const duration_weeks = Math.min(targetTopics.length * 1, 4);
+    const duration_weeks = Math.min(targetTopics.length, 4);
 
     await query(
-      `INSERT INTO study_plans (plan_id, student_id, generated_at, duration_weeks, status, source)
-       VALUES (?,?,NOW(),?,'active','ai_generated')`,
-      [plan_id, student_id, duration_weeks]
+      `INSERT INTO study_plans (plan_id, student_id, generated_at, duration_weeks, status, source, name, attempt_id)
+       VALUES (?,?,NOW(),?,'active','ai_generated',?,?)`,
+      [plan_id, student_id, duration_weeks, planName, attempt_id || null]
     );
 
     // Generate weekly tasks
     const tasks = [];
     targetTopics.forEach((topic, weekIndex) => {
-      // Day 1: Study materials
-      tasks.push({
-        task_id: uuidv4(), plan_id, week_number: weekIndex + 1, day_number: 1,
-        task_type: 'video', reference_id: null, topic_id: topic.topic_id,
-        description: `Watch explanation videos for ${topic.topic_name}`, estimated_minutes: 30
-      });
-      // Day 2-3: Practice
-      tasks.push({
-        task_id: uuidv4(), plan_id, week_number: weekIndex + 1, day_number: 2,
-        task_type: 'practice', reference_id: null, topic_id: topic.topic_id,
-        description: `Practice 20 questions on ${topic.topic_name} (easy)`, estimated_minutes: 40
-      });
-      tasks.push({
-        task_id: uuidv4(), plan_id, week_number: weekIndex + 1, day_number: 3,
-        task_type: 'practice', reference_id: null, topic_id: topic.topic_id,
-        description: `Practice 20 questions on ${topic.topic_name} (medium)`, estimated_minutes: 45
-      });
-      // Day 4: Re-evaluation
-      tasks.push({
-        task_id: uuidv4(), plan_id, week_number: weekIndex + 1, day_number: 4,
-        task_type: 'test', reference_id: null, topic_id: topic.topic_id,
-        description: `Re-evaluation test for ${topic.topic_name}`, estimated_minutes: 30
-      });
+      const w = weekIndex + 1;
+      if (isPerfectScore) {
+        // Advanced-level tasks for perfect scores
+        tasks.push({ task_id: uuidv4(), plan_id, week_number: w, day_number: 1, task_type: 'video',    topic_id: topic.topic_id, description: `Watch advanced concept videos for ${topic.topic_name}`,              estimated_minutes: 30 });
+        tasks.push({ task_id: uuidv4(), plan_id, week_number: w, day_number: 2, task_type: 'pdf',      topic_id: topic.topic_id, description: `Study advanced shortcuts & formulas for ${topic.topic_name}`,        estimated_minutes: 25 });
+        tasks.push({ task_id: uuidv4(), plan_id, week_number: w, day_number: 3, task_type: 'practice', topic_id: topic.topic_id, description: `Solve hard-level problems on ${topic.topic_name}`,                    estimated_minutes: 50 });
+        tasks.push({ task_id: uuidv4(), plan_id, week_number: w, day_number: 4, task_type: 'practice', topic_id: topic.topic_id, description: `Attempt competitive exam-style questions on ${topic.topic_name}`,    estimated_minutes: 45 });
+        tasks.push({ task_id: uuidv4(), plan_id, week_number: w, day_number: 5, task_type: 'test',     topic_id: topic.topic_id, description: `Advanced challenge test for ${topic.topic_name}`,                    estimated_minutes: 30 });
+      } else {
+        // Improvement-level tasks focused on wrong-answer topics
+        tasks.push({ task_id: uuidv4(), plan_id, week_number: w, day_number: 1, task_type: 'video',    topic_id: topic.topic_id, description: `Watch concept explanation videos for ${topic.topic_name}`,           estimated_minutes: 30 });
+        tasks.push({ task_id: uuidv4(), plan_id, week_number: w, day_number: 2, task_type: 'pdf',      topic_id: topic.topic_id, description: `Review formulas & shortcuts for ${topic.topic_name}`,                estimated_minutes: 20 });
+        tasks.push({ task_id: uuidv4(), plan_id, week_number: w, day_number: 3, task_type: 'practice', topic_id: topic.topic_id, description: `Practice 20 questions on ${topic.topic_name} (easy)`,               estimated_minutes: 40 });
+        tasks.push({ task_id: uuidv4(), plan_id, week_number: w, day_number: 4, task_type: 'practice', topic_id: topic.topic_id, description: `Practice 20 questions on ${topic.topic_name} (medium)`,             estimated_minutes: 45 });
+        tasks.push({ task_id: uuidv4(), plan_id, week_number: w, day_number: 5, task_type: 'test',     topic_id: topic.topic_id, description: `Re-evaluation test for ${topic.topic_name}`,                        estimated_minutes: 30 });
+      }
     });
 
     for (const task of tasks) {
@@ -1220,7 +1266,7 @@ const generatePlan = async (req, res, next) => {
       );
     }
 
-    res.json({ plan_id, duration_weeks, weak_topics: targetTopics, total_tasks: tasks.length });
+    res.json({ plan_id, plan_name: planName, duration_weeks, weak_topics: targetTopics, total_tasks: tasks.length, is_perfect_score: isPerfectScore });
   } catch (err) {
     next(err);
   }
@@ -1230,27 +1276,30 @@ const generatePlan = async (req, res, next) => {
 const getCurrentPlan = async (req, res, next) => {
   try {
     const planResult = await query(
-      `SELECT * FROM study_plans WHERE student_id = ? AND status = 'active' LIMIT 1`,
+      `SELECT * FROM study_plans WHERE student_id = ? AND status = 'active' ORDER BY generated_at DESC`,
       [req.user.user_id]
     );
 
     if (planResult.rows.length === 0) {
-      return res.json({ plan: null });
+      return res.json({ plan: null, plans: [] });
     }
 
-    const plan = planResult.rows[0];
-    const tasks = await query(
-      `SELECT pt.*, t.name as topic_name, t.subject_id, s.name as subject_name
-       FROM plan_tasks pt
-       LEFT JOIN topics t ON t.topic_id = pt.topic_id
-       LEFT JOIN subjects s ON s.subject_id = t.subject_id
-       WHERE pt.plan_id = ?
-       ORDER BY pt.week_number, pt.day_number`,
-      [plan.plan_id]
-    );
-    plan.tasks = tasks.rows;
+    const plans = planResult.rows;
+    for (const plan of plans) {
+      const tasks = await query(
+        `SELECT pt.*, t.name as topic_name, t.subject_id, s.name as subject_name
+         FROM plan_tasks pt
+         LEFT JOIN topics t ON t.topic_id = pt.topic_id
+         LEFT JOIN subjects s ON s.subject_id = t.subject_id
+         WHERE pt.plan_id = ?
+         ORDER BY pt.week_number, pt.day_number`,
+        [plan.plan_id]
+      );
+      plan.tasks = tasks.rows;
+    }
 
-    res.json({ plan });
+    // Backward compat: plan = most recent
+    res.json({ plan: plans[0], plans });
   } catch (err) {
     next(err);
   }

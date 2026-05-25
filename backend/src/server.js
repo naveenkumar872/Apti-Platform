@@ -13,6 +13,10 @@ const { errorHandler, notFound } = require('./middleware/errorHandler');
 
 const app = express();
 
+// Trust the first proxy hop (required on Render, Heroku, etc.)
+// so express-rate-limit can read X-Forwarded-For correctly.
+app.set('trust proxy', 1);
+
 // Security headers
 app.use(helmet());
 

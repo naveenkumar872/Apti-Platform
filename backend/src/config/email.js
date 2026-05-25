@@ -17,7 +17,7 @@ const transporter = nodemailer.createTransport({
  */
 const sendOTPEmail = async (email, name, otp) => {
   const mailOptions = {
-    from: `"Aptitude Platform" <${process.env.EMAIL_FROM}>`,
+    from: `"Aptitude Platform" <${process.env.SMTP_USER}>`,
     to: email,
     subject: 'Verify your email - Aptitude Platform',
     html: `
@@ -47,7 +47,7 @@ const sendOTPEmail = async (email, name, otp) => {
  */
 const sendPasswordResetEmail = async (email, name, resetLink) => {
   const mailOptions = {
-    from: `"Aptitude Platform" <${process.env.EMAIL_FROM}>`,
+    from: `"Aptitude Platform" <${process.env.SMTP_USER}>`,
     to: email,
     subject: 'Reset your password - Aptitude Platform',
     html: `

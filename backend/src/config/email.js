@@ -1,23 +1,36 @@
-const nodemailer = require('nodemailer');
+// Uses Resend HTTP API (https://resend.com) — works on Render free tier.
+// Nodemailer SMTP is blocked on Render because ports 25/465/587 are firewalled.
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: parseInt(process.env.SMTP_PORT) || 587,
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-  connectionTimeout: 10000,
-  socketTimeout: 15000,
-});
+const RESEND_API_URL = 'https://api.resend.com/emails';
+
+async function sendViaResend({ to, subject, html }) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) throw new Error('RESEND_API_KEY environment variable is not set');
+
+  const from = process.env.EMAIL_FROM || 'AptitudePrep <onboarding@resend.dev>';
+
+  const res = await fetch(RESEND_API_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ from, to: [to], subject, html }),
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(`Resend API ${res.status}: ${body.message || res.statusText}`);
+  }
+
+  return res.json();
+}
 
 /**
  * Send OTP email for email verification
  */
 const sendOTPEmail = async (email, name, otp) => {
-  const mailOptions = {
-    from: `"Aptitude Platform" <${process.env.SMTP_USER}>`,
+  return sendViaResend({
     to: email,
     subject: 'Verify your email - Aptitude Platform',
     html: `
@@ -28,7 +41,7 @@ const sendOTPEmail = async (email, name, otp) => {
         <div style="padding: 30px; background: #f9fafb;">
           <h2>Hello ${name},</h2>
           <p>Your email verification code is:</p>
-          <div style="background: #1d4ed8; color: white; font-size: 32px; font-weight: bold; 
+          <div style="background: #1d4ed8; color: white; font-size: 32px; font-weight: bold;
                       text-align: center; padding: 20px; border-radius: 8px; letter-spacing: 8px;">
             ${otp}
           </div>
@@ -38,16 +51,14 @@ const sendOTPEmail = async (email, name, otp) => {
         </div>
       </div>
     `,
-  };
-  return transporter.sendMail(mailOptions);
+  });
 };
 
 /**
  * Send password reset email
  */
 const sendPasswordResetEmail = async (email, name, resetLink) => {
-  const mailOptions = {
-    from: `"Aptitude Platform" <${process.env.SMTP_USER}>`,
+  return sendViaResend({
     to: email,
     subject: 'Reset your password - Aptitude Platform',
     html: `
@@ -59,8 +70,8 @@ const sendPasswordResetEmail = async (email, name, resetLink) => {
           <h2>Hello ${name},</h2>
           <p>Click the button below to reset your password:</p>
           <div style="text-align: center; margin: 30px 0;">
-            <a href="${resetLink}" 
-               style="background: #1d4ed8; color: white; padding: 12px 30px; 
+            <a href="${resetLink}"
+               style="background: #1d4ed8; color: white; padding: 12px 30px;
                       text-decoration: none; border-radius: 6px; font-size: 16px;">
               Reset Password
             </a>
@@ -74,16 +85,14 @@ const sendPasswordResetEmail = async (email, name, resetLink) => {
         </div>
       </div>
     `,
-  };
-  return transporter.sendMail(mailOptions);
+  });
 };
 
 /**
  * Send test assignment notification
  */
 const sendTestAssignedEmail = async (email, name, testTitle, startTime) => {
-  const mailOptions = {
-    from: `"Aptitude Platform" <${process.env.EMAIL_FROM}>`,
+  return sendViaResend({
     to: email,
     subject: `New test assigned: ${testTitle}`,
     html: `
@@ -96,8 +105,8 @@ const sendTestAssignedEmail = async (email, name, testTitle, startTime) => {
           <p>A new test has been assigned to you: <strong>${testTitle}</strong></p>
           ${startTime ? `<p>Available from: <strong>${new Date(startTime).toLocaleString()}</strong></p>` : ''}
           <div style="text-align: center; margin: 30px 0;">
-            <a href="${process.env.FRONTEND_URL}/student/tests" 
-               style="background: #1d4ed8; color: white; padding: 12px 30px; 
+            <a href="${process.env.FRONTEND_URL}/student/tests"
+               style="background: #1d4ed8; color: white; padding: 12px 30px;
                       text-decoration: none; border-radius: 6px; font-size: 16px;">
               View Test
             </a>
@@ -105,8 +114,7 @@ const sendTestAssignedEmail = async (email, name, testTitle, startTime) => {
         </div>
       </div>
     `,
-  };
-  return transporter.sendMail(mailOptions);
+  });
 };
 
 module.exports = { sendOTPEmail, sendPasswordResetEmail, sendTestAssignedEmail };

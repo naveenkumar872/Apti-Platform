@@ -34,7 +34,7 @@ const register = async (req, res, next) => {
           await sendOTPEmail(email, existingUser.name, otp);
         } catch (emailErr) {
           email_sent = false;
-          console.error('[OTP email failed]', emailErr.message);
+          console.error('[OTP email failed]', emailErr.message, emailErr.stack);
           if (process.env.NODE_ENV !== 'production') {
             console.log(`[DEV OTP for ${email}] ${otp}  (expires in 10m)`);
           }
@@ -78,7 +78,7 @@ const register = async (req, res, next) => {
       await sendOTPEmail(email, name, otp);
     } catch (emailErr) {
       email_sent = false;
-      console.error('[OTP email failed]', emailErr.message);
+      console.error('[OTP email failed]', emailErr.message, emailErr.stack);
       if (process.env.NODE_ENV !== 'production') {
         console.log(`[DEV OTP for ${email}] ${otp}  (expires in 10m)`);
       }
@@ -167,7 +167,7 @@ const resendOTP = async (req, res, next) => {
       await sendOTPEmail(user.rows[0].email, user.rows[0].name, otp);
     } catch (emailErr) {
       email_sent = false;
-      console.error('[OTP email failed]', emailErr.message);
+      console.error('[OTP email failed]', emailErr.message, emailErr.stack);
       if (process.env.NODE_ENV !== 'production') {
         console.log(`[DEV OTP for ${user.rows[0].email}] ${otp}  (expires in 10m)`);
       }

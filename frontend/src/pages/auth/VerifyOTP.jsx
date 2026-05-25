@@ -8,7 +8,7 @@ import AuthShell, { AuthSubmit } from '../../components/auth/AuthShell';
 export default function VerifyOTP() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user_id, email } = location.state || {};
+  const { user_id, email, email_sent = true } = location.state || {};
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
@@ -70,6 +70,11 @@ export default function VerifyOTP() {
       }
       showAside={false}
     >
+      {!email_sent && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10 px-4 py-3 text-[13px] text-amber-800 dark:text-amber-300">
+          <strong>Email delivery failed.</strong> The OTP could not be sent to your inbox. Click <strong>Resend</strong> below to try again, or check your spam folder.
+        </div>
+      )}
       <div className="flex gap-2 justify-between mb-6" onPaste={handlePaste}>
         {otp.map((digit, i) => (
           <input

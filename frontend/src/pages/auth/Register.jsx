@@ -28,12 +28,17 @@ export default function Register() {
         branch: data.branch,
         year: Number(data.year),
       });
+      const emailSent = res.data.email_sent !== false;
       if (res.data.needs_verification) {
-        toast.success('Account already exists. A new OTP has been sent to your email.');
+        emailSent
+          ? toast.success('Account already exists. A new OTP has been sent to your email.')
+          : toast.error('Could not send OTP email. Use the Resend button on the next page.');
       } else {
-        toast.success('Account created. Please verify your email.');
+        emailSent
+          ? toast.success('Account created. Please verify your email.')
+          : toast.error('Account created but OTP email failed. Use the Resend button on the next page.');
       }
-      navigate('/verify-otp', { state: { user_id: res.data.user_id, email: data.email } });
+      navigate('/verify-otp', { state: { user_id: res.data.user_id, email: data.email, email_sent: emailSent } });
     } catch (err) {
       toast.error(err.response?.data?.error || 'Registration failed');
     }

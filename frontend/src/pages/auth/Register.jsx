@@ -28,7 +28,11 @@ export default function Register() {
         branch: data.branch,
         year: Number(data.year),
       });
-      toast.success('Account created. Please verify your email.');
+      if (res.data.needs_verification) {
+        toast.success('Account already exists. A new OTP has been sent to your email.');
+      } else {
+        toast.success('Account created. Please verify your email.');
+      }
       navigate('/verify-otp', { state: { user_id: res.data.user_id, email: data.email } });
     } catch (err) {
       toast.error(err.response?.data?.error || 'Registration failed');

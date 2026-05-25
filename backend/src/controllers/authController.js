@@ -16,8 +16,36 @@ const register = async (req, res, next) => {
     } = req.body;
 
     // Check if email exists
-    const existing = await query('SELECT user_id FROM users WHERE email = ?', [email]);
+    const existing = await query('SELECT user_id, name, is_verified FROM users WHERE email = ?', [email]);
     if (existing.rows.length > 0) {
+      const existingUser = existing.rows[0];
+      // If the account exists but is NOT yet verified, resend OTP and let them verify
+      if (!existingUser.is_verified) {
+        const otp = generateOTP();
+        const otp_expires = addMinutes(10);
+        await query(
+          `INSERT INTO email_otps (user_id, otp, expires_at)
+           VALUES (?,?,?)
+           ON DUPLICATE KEY UPDATE otp=VALUES(otp), expires_at=VALUES(expires_at), created_at=NOW()`,
+          [existingUser.user_id, otp, otp_expires]
+        );
+        let email_sent = true;
+        try {
+          await sendOTPEmail(email, existingUser.name, otp);
+        } catch (emailErr) {
+          email_sent = false;
+          console.error('[OTP email failed]', emailErr.message);
+          if (process.env.NODE_ENV !== 'production') {
+            console.log(`[DEV OTP for ${email}] ${otp}  (expires in 10m)`);
+          }
+        }
+        return res.status(200).json({
+          message: 'Account already registered but not verified. A new OTP has been sent.',
+          user_id: existingUser.user_id,
+          email_sent,
+          needs_verification: true,
+        });
+      }
       return res.status(409).json({ error: 'Email already registered' });
     }
 

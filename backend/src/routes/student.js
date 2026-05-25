@@ -111,4 +111,7 @@ router.post('/doubts/:id/answers', studentController.answerDoubt);
 // Skill Profile
 router.get('/skills', studentController.getSkillProfile);
 
+// Weak Topics — aggregated across all tests, auto-cleared on improvement
+router.get('/weak-topics', studentController.getWeakTopics);
+
 module.exports = router;

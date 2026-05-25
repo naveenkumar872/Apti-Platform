@@ -22,6 +22,7 @@ import StudyPlan from './pages/student/StudyPlan';
 import CompanyCorner from './pages/student/CompanyCorner';
 import Diagnostic from './pages/student/Diagnostic';
 import Mistakes from './pages/student/Mistakes';
+import WeakTopics from './pages/student/WeakTopics';
 import { SimulatorLanding, SimulatorRunner, SimulatorResult } from './pages/student/Simulator';
 
 // Admin pages
@@ -79,7 +80,8 @@ function App() {
               <Route path="/student/dashboard"  element={<ErrorBoundary><StudentDashboard /></ErrorBoundary>} />
               <Route path="/student/materials"  element={<ErrorBoundary><StudyMaterials /></ErrorBoundary>} />
               <Route path="/student/practice"   element={<ErrorBoundary><Practice /></ErrorBoundary>} />
-              <Route path="/student/mistakes"   element={<ErrorBoundary><Mistakes /></ErrorBoundary>} />
+              <Route path="/student/mistakes"       element={<ErrorBoundary><Mistakes /></ErrorBoundary>} />
+              <Route path="/student/weak-topics"    element={<ErrorBoundary><WeakTopics /></ErrorBoundary>} />
               <Route path="/student/tests"      element={<ErrorBoundary><Tests /></ErrorBoundary>} />
               <Route path="/student/reports"    element={<ErrorBoundary><Reports /></ErrorBoundary>} />
               <Route path="/student/plan"       element={<ErrorBoundary><StudyPlan /></ErrorBoundary>} />

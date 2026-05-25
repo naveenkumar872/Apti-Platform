@@ -1630,6 +1630,63 @@ const getSkillProfile = async (req, res, next) => {
   }
 };
 
+/** GET /student/weak-topics — all topics where the student is weak (is_weak=1), with per-test breakdown */
+const getWeakTopics = async (req, res, next) => {
+  try {
+    const student_id = req.user.user_id;
+
+    // All topics currently flagged as weak (auto-cleared when cumulative accuracy >= 60%)
+    const weakTopics = await query(
+      `SELECT ssp.topic_id, t.name AS topic_name, s.name AS subject_name, s.subject_id,
+              ssp.accuracy_percent, ssp.total_attempts, ssp.correct_count, ssp.last_attempted
+       FROM student_skill_profile ssp
+       JOIN topics t ON t.topic_id = ssp.topic_id
+       JOIN subjects s ON s.subject_id = t.subject_id
+       WHERE ssp.student_id = ? AND ssp.is_weak = 1
+       ORDER BY ssp.accuracy_percent ASC`,
+      [student_id]
+    );
+
+    if (weakTopics.rows.length === 0) {
+      return res.json({ weak_topics: [], test_breakdown: [] });
+    }
+
+    // Per-test breakdown for every weak topic across ALL submitted attempts
+    const topicIds = weakTopics.rows.map(r => r.topic_id);
+    const placeholders = topicIds.map(() => '?').join(',');
+    const breakdown = await query(
+      `SELECT
+         t.topic_id,
+         tests.test_id,
+         tests.title AS test_title,
+         ta.attempt_id,
+         ta.submitted_at,
+         COUNT(aa.question_id)                                                        AS total_questions,
+         SUM(CASE WHEN aa.is_correct = 1 THEN 1 ELSE 0 END)                          AS correct_questions,
+         ROUND(SUM(CASE WHEN aa.is_correct = 1 THEN 1 ELSE 0 END)
+               / COUNT(aa.question_id) * 100, 1)                                      AS accuracy_in_test
+       FROM test_attempts ta
+       JOIN attempt_answers aa ON aa.attempt_id = ta.attempt_id
+       JOIN questions q        ON q.question_id  = aa.question_id
+       JOIN concepts  c        ON c.concept_id   = q.concept_id
+       JOIN topics    t        ON t.topic_id      = c.topic_id
+       JOIN tests               ON tests.test_id   = ta.test_id
+       WHERE ta.student_id = ?
+         AND ta.status = 'submitted'
+         AND aa.selected_answer IS NOT NULL
+         AND t.topic_id IN (${placeholders})
+       GROUP BY t.topic_id, ta.attempt_id, tests.test_id, tests.title, ta.submitted_at
+       HAVING COUNT(aa.question_id) >= 1
+       ORDER BY ta.submitted_at DESC`,
+      [student_id, ...topicIds]
+    );
+
+    res.json({ weak_topics: weakTopics.rows, test_breakdown: breakdown.rows });
+  } catch (err) {
+    next(err);
+  }
+};
+
 /** GET /student/subjects — subjects with their topics (for Practice page) */
 const getSubjects = async (req, res, next) => {
   try {
@@ -2068,6 +2125,6 @@ module.exports = {
   getReports, getReportById, deleteReport, deleteAllReports, generatePlan, getCurrentPlan, completeTask,
   getCompanies, getCompanyById, generateCompanyQuestions, generateTopicQuestions, getLeaderboard,
   addBookmark, getBookmarks, removeBookmark,
-  postDoubt, getDoubts, answerDoubt, getSkillProfile, getSubjects, getConceptsByTopic,
+  postDoubt, getDoubts, answerDoubt, getSkillProfile, getWeakTopics, getSubjects, getConceptsByTopic,
   getSmartTopics, getSmartConcepts, aiGenerateMaterials, deleteAIMaterial
 };

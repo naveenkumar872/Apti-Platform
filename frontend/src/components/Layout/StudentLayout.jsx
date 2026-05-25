@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate, Link } from 'react-router-dom';
 import {
   BookOpen, BarChart2, ClipboardList, Calendar, Building2,
-  LayoutDashboard, LogOut, Sun, Moon, Sparkles, Lock, Target, ArrowRight, RotateCcw
+  LayoutDashboard, LogOut, Sun, Moon, Sparkles, Lock, Target, ArrowRight, RotateCcw, TrendingDown
 } from 'lucide-react';
 import useAuthStore from '../../stores/authStore';
 import toast from 'react-hot-toast';
@@ -14,8 +14,9 @@ const navItems = [
   { to: '/student/dashboard',  icon: LayoutDashboard, label: 'Dashboard',      alwaysOpen: true },
   { to: '/student/materials',  icon: BookOpen,        label: 'Study Materials' },
   { to: '/student/practice',   icon: ClipboardList,   label: 'Practice' },
-  { to: '/student/mistakes',   icon: RotateCcw,       label: 'Review' },
-  { to: '/student/tests',      icon: BarChart2,       label: 'Tests' },
+  { to: '/student/mistakes',    icon: RotateCcw,      label: 'Review' },
+  { to: '/student/weak-topics', icon: TrendingDown,   label: 'Weak Topics' },
+  { to: '/student/tests',       icon: BarChart2,       label: 'Tests' },
   { to: '/student/reports',    icon: BarChart2,       label: 'Reports' },
   { to: '/student/plan',       icon: Calendar,        label: 'Study Plan' },
   { to: '/student/simulator',  icon: Building2,       label: 'Company Simulator' },

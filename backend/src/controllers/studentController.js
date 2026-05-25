@@ -1647,41 +1647,127 @@ const getWeakTopics = async (req, res, next) => {
       [student_id]
     );
 
-    if (weakTopics.rows.length === 0) {
-      return res.json({ weak_topics: [], test_breakdown: [] });
+    // Per-test breakdown for weak topics across regular test attempts
+    let testBreakdown = [];
+    if (weakTopics.rows.length > 0) {
+      const topicIds = weakTopics.rows.map(r => r.topic_id);
+      const placeholders = topicIds.map(() => '?').join(',');
+      const breakdown = await query(
+        `SELECT
+           t.topic_id,
+           t.name                                                                         AS topic_name,
+           s.name                                                                         AS subject_name,
+           tests.test_id,
+           tests.title                                                                    AS test_title,
+           ta.attempt_id,
+           ta.submitted_at,
+           COUNT(aa.question_id)                                                          AS total_questions,
+           SUM(CASE WHEN aa.is_correct = 1 THEN 1 ELSE 0 END)                            AS correct_questions,
+           ROUND(SUM(CASE WHEN aa.is_correct = 1 THEN 1 ELSE 0 END)
+                 / COUNT(aa.question_id) * 100, 1)                                        AS accuracy_in_test
+         FROM test_attempts ta
+         JOIN attempt_answers aa ON aa.attempt_id = ta.attempt_id
+         JOIN questions q        ON q.question_id  = aa.question_id
+         JOIN concepts  c        ON c.concept_id   = q.concept_id
+         JOIN topics    t        ON t.topic_id      = c.topic_id
+         JOIN subjects  s        ON s.subject_id    = t.subject_id
+         JOIN tests               ON tests.test_id   = ta.test_id
+         WHERE ta.student_id = ?
+           AND ta.status = 'submitted'
+           AND aa.selected_answer IS NOT NULL
+           AND t.topic_id IN (${placeholders})
+         GROUP BY t.topic_id, t.name, s.name, ta.attempt_id, tests.test_id, tests.title, ta.submitted_at
+         HAVING COUNT(aa.question_id) >= 1
+         ORDER BY ta.submitted_at DESC`,
+        [student_id, ...topicIds]
+      );
+      testBreakdown = breakdown.rows;
     }
 
-    // Per-test breakdown for every weak topic across ALL submitted attempts
-    const topicIds = weakTopics.rows.map(r => r.topic_id);
-    const placeholders = topicIds.map(() => '?').join(',');
-    const breakdown = await query(
+    // Diagnostic breakdown — ALL topics (and subject-level fallback) where accuracy < 60%
+    // Not filtered by is_weak=1 so we see the full picture from the diagnostic.
+    const diagTopics = await query(
       `SELECT
-         t.topic_id,
-         tests.test_id,
-         tests.title AS test_title,
-         ta.attempt_id,
-         ta.submitted_at,
-         COUNT(aa.question_id)                                                        AS total_questions,
-         SUM(CASE WHEN aa.is_correct = 1 THEN 1 ELSE 0 END)                          AS correct_questions,
-         ROUND(SUM(CASE WHEN aa.is_correct = 1 THEN 1 ELSE 0 END)
-               / COUNT(aa.question_id) * 100, 1)                                      AS accuracy_in_test
-       FROM test_attempts ta
-       JOIN attempt_answers aa ON aa.attempt_id = ta.attempt_id
-       JOIN questions q        ON q.question_id  = aa.question_id
-       JOIN concepts  c        ON c.concept_id   = q.concept_id
-       JOIN topics    t        ON t.topic_id      = c.topic_id
-       JOIN tests               ON tests.test_id   = ta.test_id
-       WHERE ta.student_id = ?
-         AND ta.status = 'submitted'
-         AND aa.selected_answer IS NOT NULL
-         AND t.topic_id IN (${placeholders})
-       GROUP BY t.topic_id, ta.attempt_id, tests.test_id, tests.title, ta.submitted_at
-       HAVING COUNT(aa.question_id) >= 1
-       ORDER BY ta.submitted_at DESC`,
-      [student_id, ...topicIds]
+         da.topic_id,
+         t.name                                                                          AS topic_name,
+         s.name                                                                          AS subject_name,
+         s.subject_id,
+         datt.attempt_id,
+         datt.submitted_at,
+         COUNT(da.question_id)                                                           AS total_questions,
+         SUM(CASE WHEN da.is_correct = 1 THEN 1 ELSE 0 END)                             AS correct_questions,
+         ROUND(SUM(CASE WHEN da.is_correct = 1 THEN 1 ELSE 0 END)
+               / COUNT(da.question_id) * 100, 1)                                         AS accuracy_in_test
+       FROM diagnostic_attempts datt
+       JOIN diagnostic_answers da ON da.attempt_id = datt.attempt_id AND da.topic_id IS NOT NULL
+       JOIN topics  t ON t.topic_id   = da.topic_id
+       JOIN subjects s ON s.subject_id = t.subject_id
+       WHERE datt.student_id = ? AND datt.status = 'submitted'
+       GROUP BY da.topic_id, t.name, s.name, s.subject_id, datt.attempt_id, datt.submitted_at
+       HAVING accuracy_in_test < 60
+       ORDER BY accuracy_in_test ASC`,
+      [student_id]
     );
 
-    res.json({ weak_topics: weakTopics.rows, test_breakdown: breakdown.rows });
+    // Subject-level fallback for diagnostic questions that had no topic_id
+    const diagSubjects = await query(
+      `SELECT
+         da.subject_id                                                                   AS topic_id,
+         CONCAT(s.name, ' (General)')                                                   AS topic_name,
+         s.name                                                                          AS subject_name,
+         da.subject_id,
+         datt.attempt_id,
+         datt.submitted_at,
+         COUNT(da.question_id)                                                           AS total_questions,
+         SUM(CASE WHEN da.is_correct = 1 THEN 1 ELSE 0 END)                             AS correct_questions,
+         ROUND(SUM(CASE WHEN da.is_correct = 1 THEN 1 ELSE 0 END)
+               / COUNT(da.question_id) * 100, 1)                                         AS accuracy_in_test
+       FROM diagnostic_attempts datt
+       JOIN diagnostic_answers da ON da.attempt_id = datt.attempt_id AND da.topic_id IS NULL
+       JOIN subjects s ON s.subject_id = da.subject_id
+       WHERE datt.student_id = ? AND datt.status = 'submitted'
+       GROUP BY da.subject_id, s.name, datt.attempt_id, datt.submitted_at
+       HAVING accuracy_in_test < 60
+       ORDER BY accuracy_in_test ASC`,
+      [student_id]
+    );
+
+    const diagBreakdown = [...diagTopics.rows, ...diagSubjects.rows]
+      .sort((a, b) => Number(a.accuracy_in_test) - Number(b.accuracy_in_test));
+
+    // Practice breakdown — per-topic per-session where accuracy < 60%
+    const practiceBreakdown = await query(
+      `SELECT
+         t.topic_id,
+         t.name                                                                         AS topic_name,
+         s.name                                                                         AS subject_name,
+         s.subject_id,
+         ps.session_id,
+         ps.title                                                                       AS session_title,
+         ps.submitted_at,
+         COUNT(pa.question_id)                                                          AS total_questions,
+         SUM(CASE WHEN pa.is_correct = 1 THEN 1 ELSE 0 END)                            AS correct_questions,
+         ROUND(SUM(CASE WHEN pa.is_correct = 1 THEN 1 ELSE 0 END)
+               / COUNT(pa.question_id) * 100, 1)                                        AS accuracy_in_test
+       FROM practice_sessions ps
+       JOIN practice_answers pa ON pa.session_id = ps.session_id
+       JOIN questions         q ON q.question_id  = pa.question_id
+       JOIN concepts          c ON c.concept_id   = q.concept_id
+       JOIN topics            t ON t.topic_id      = c.topic_id
+       JOIN subjects          s ON s.subject_id    = t.subject_id
+       WHERE ps.student_id = ? AND ps.status = 'completed'
+       GROUP BY t.topic_id, t.name, s.name, s.subject_id, ps.session_id, ps.title, ps.submitted_at
+       HAVING accuracy_in_test < 60
+       ORDER BY ps.submitted_at DESC, accuracy_in_test ASC`,
+      [student_id]
+    );
+
+    res.json({
+      weak_topics: weakTopics.rows,
+      test_breakdown: testBreakdown,
+      diag_breakdown: diagBreakdown,
+      practice_breakdown: practiceBreakdown.rows,
+    });
   } catch (err) {
     next(err);
   }

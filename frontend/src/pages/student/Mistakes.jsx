@@ -8,6 +8,55 @@ import toast from 'react-hot-toast';
 
 const CARD = 'bg-white dark:bg-[#0e0e15] border border-slate-200 dark:border-white/[0.06] rounded-2xl';
 
+/* Render AI explanation with step-by-step formatting */
+function ExplanationBlock({ text }) {
+  if (!text) return null;
+
+  // Strip leading label like "Step-by-step:" or "Solution:"
+  const cleaned = text.replace(/^(step[\s-]*by[\s-]*step|solution|explanation)\s*[:\-–]\s*/i, '').trim();
+
+  // Try to split on explicit "Step N:" markers
+  const stepPattern = /(?:^|\s)(step\s*\d+\s*[:\-–])/gi;
+  const hasSteps = stepPattern.test(cleaned);
+
+  if (hasSteps) {
+    const parts = cleaned.split(/(?=step\s*\d+\s*[:\-–])/i).filter(Boolean);
+    return (
+      <div className="mt-2 space-y-2">
+        {parts.map((part, i) => {
+          const match = part.match(/^(step\s*\d+\s*[:\-–])\s*/i);
+          if (match) {
+            return (
+              <div key={i} className="flex gap-2 text-[12.5px]">
+                <span className="font-bold text-violet-600 dark:text-violet-400 flex-shrink-0 pt-0.5">{match[1].replace(/\s+/g, ' ')}</span>
+                <span className="text-slate-700 dark:text-slate-300 leading-relaxed">{part.slice(match[0].length)}</span>
+              </div>
+            );
+          }
+          return <p key={i} className="text-[12.5px] text-slate-700 dark:text-slate-300 leading-relaxed">{part.trim()}</p>;
+        })}
+      </div>
+    );
+  }
+
+  // Split into sentences, group calculation lines separately
+  const sentences = cleaned.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 0);
+  if (sentences.length <= 2) {
+    return <p className="mt-2 text-[12.5px] text-slate-700 dark:text-slate-300 leading-relaxed">{cleaned}</p>;
+  }
+
+  return (
+    <ul className="mt-2 space-y-1.5">
+      {sentences.map((s, i) => (
+        <li key={i} className="flex gap-2 text-[12.5px]">
+          <span className="mt-1.5 w-1 h-1 rounded-full bg-slate-400 dark:bg-slate-500 flex-shrink-0" />
+          <span className="text-slate-700 dark:text-slate-300 leading-relaxed">{s.trim()}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /* ─────────────────────────────────────────────────
    Replay session — answer wrong questions one at a time
    ───────────────────────────────────────────────── */
@@ -202,9 +251,7 @@ function ReplaySession({ topicId, onExit }) {
               {feedback.is_correct ? '✓ Mastered — removed from your queue' : `✗ Still tricky — correct answer is ${feedback.correct_answer}`}
             </p>
             {feedback.explanation && (
-              <p className="mt-2 text-[12.5px] text-slate-700 dark:text-slate-300 leading-relaxed">
-                {feedback.explanation}
-              </p>
+              <ExplanationBlock text={feedback.explanation} />
             )}
           </div>
         )}
